@@ -10,7 +10,7 @@
 let RATE={roduxPerUsd:11461,roduxPerRobux:143.27,robuxPerUsd:80,values:[5,10,100,500].map(u=>({usd:u,rodux:u*11461})),source:'Trade Empire Rodux packs'};
 (async()=>{try{const r=await fetch('/api/rates',{cache:'no-store'});if(r.ok){const j=await r.json();if(j.roduxPerUsd>0){RATE=j;renderBal()}}}catch{}})();
 const toUsd=v=>v/RATE.roduxPerUsd,toRobux=v=>v/RATE.roduxPerRobux;
-const usdStr=v=>{const d=toUsd(v);return'US$'+(d>=1000?d.toLocaleString('en-US',{maximumFractionDigits:0}):d.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}))};
+const usdStr=v=>'USD $'+toUsd(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const robuxStr=v=>'R$ '+Math.round(toRobux(v)).toLocaleString('en-US');
 S.prefs.show=S.prefs.show||'rodux';
 
@@ -75,27 +75,28 @@ addEventListener('scroll',()=>{RXT.classList.remove('on');rxOn=null},true);
 
 /* ---------- redeeming ---------- */
 const GC_LOOK={5:['Bronze','#C98A4B','#6B3E16'],10:['Silver','#C9D3DF','#4C5866'],100:['Gold','#F3D27A','#8A5A0A'],500:['Black','#E7C77F','#0B0E13']};
-const gcFace=(usd,small)=>{const [n,a,b]=GC_LOOK[usd],v=(RATE.values.find(x=>x.usd===usd)||{rodux:usd*RATE.roduxPerUsd}).rodux;
-  return`<div class="gcf v${usd}${small?' sm':''}" style="--a:${a};--b:${b}"><div class="gcf-top"><span>TradeBlacket</span><i>${n}</i></div><b>$${usd}</b><div class="gcf-bot"><span>${chip(13)}${fmt0(v)} Rodux</span><small>Gift card</small></div></div>`};
+// A card shows its value in dollars only: "USD $10". The Rodux it pays is worked out on redeem.
+const gcFace=(usd,small)=>{const [n,a,b]=GC_LOOK[usd];
+  return`<div class="gcf v${usd}${small?' sm':''}" style="--a:${a};--b:${b}"><div class="gcf-top"><span>TradeBlacket</span><i>${n}</i></div><b><small>USD</small> <span>$${usd}</span></b><div class="gcf-bot"><span>Gift card</span><small>Rodux on TradeBlacket</small></div></div>`};
 PAGES.giftcard=el=>{
   const mine=WAPI.live&&WAPI.me?WAPI.me.transfers.filter(t=>/gift card/.test(t.reason||'')):(S.gifts||[]);
   el.innerHTML=`<div class="page-h"><div><div class="crumb"><button data-go="home">Home</button> / Account</div><h2>Gift cards</h2><p>Got a code from a creator or the Trade Empire team? Redeem it here and the Rodux goes straight to your balance.</p></div></div>
   <section class="gc-hero">
     <div class="gc-faces">${[5,10,100,500].map(u=>gcFace(u)).join('')}</div>
     <form class="gc-redeem" id="gcf"><label for="gci">Gift card code</label><div><input id="gci" class="txt" placeholder="TBG-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" maxlength="22"><button class="cta inline" id="gcb">Redeem</button></div><div class="err" id="gce"></div>
-      <p class="note">Gift cards can't be bought. The Trade Empire team and creators give them away, so only use codes from their official channels. A card is worth its dollar value in Rodux, worked out from Trade Empire's Rodux prices when you redeem it.</p></form>
+      <p class="note">Gift cards can't be bought. The Trade Empire team and creators give them away, so only use codes from their official channels. A card adds its dollar value to your balance as Rodux, at Trade Empire's Rodux prices when you redeem it.</p></form>
   </section>
   <div id="gcwin"></div>
-  <section class="card"><h3 class="sec" style="margin:0 0 10px">Your gift cards</h3>${mine.length?`<ul class="al">${mine.map(t=>`<li><span class="vk grant">${esc((t.reason||'').replace(' gift card',''))}</span><div><b>${chip(13)}${fmt0(t.amount)} Rodux</b><small>${new Date(t.created_at||t.t).toLocaleString()} · ${t.kind==='bonus'?'bonus Rodux, plays on TradeBlacket':'can be withdrawn to Trade Empire'}</small></div></li>`).join('')}</ul>`:'<p class="note">No gift cards redeemed yet.</p>'}</section>`;
+  <section class="card"><h3 class="sec" style="margin:0 0 10px">Your gift cards</h3>${mine.length?`<ul class="al">${mine.map(t=>`<li><span class="vk grant">Gift card</span><div><b>${esc((t.reason||'').replace(/^\$/,'USD $').replace(/^USD USD/,'USD').replace(' gift card',''))}</b><small>${new Date(t.created_at||t.t).toLocaleString()} · ${t.kind==='bonus'?'bonus Rodux, plays on TradeBlacket':'can be withdrawn to Trade Empire'}</small></div></li>`).join('')}</ul>`:'<p class="note">No gift cards redeemed yet.</p>'}</section>`;
   if(!S.user){$('#gcf',el).innerHTML=`<p>Sign in to redeem a gift card.</p><button class="cta inline" data-open="login">Sign in</button>`;return}
   $('#gcf',el).onsubmit=async e=>{e.preventDefault();const code=$('#gci',el).value.trim();if(!code)return;$('#gce',el).textContent='';$('#gcb',el).disabled=true;
     let r;
     if(WAPI.live){const x=await api('/api/giftcards/redeem',{code});$('#gcb',el).disabled=false;if(!x.ok){$('#gce',el).textContent=x.j.error;return}r=x.j;syncMe()}
     else{$('#gcb',el).disabled=false;if(!/^(TBG)?[A-Z2-9]{12}$/i.test(code.replace(/[^a-z0-9]/gi,''))){$('#gce',el).textContent='Enter the whole gift card code, like TBG-ABCD-EFGH-JKLM.';return}
-      r={usd:10,rodux:10*RATE.roduxPerUsd,withdrawable:false,code:'TBG-••••'};bonus(r.rodux);S.gifts=[{reason:'$10 gift card',amount:r.rodux,kind:'bonus',t:Date.now()},...(S.gifts||[])];save()}
+      r={usd:10,rodux:10*RATE.roduxPerUsd,withdrawable:false,code:'TBG-••••'};bonus(r.rodux);S.gifts=[{reason:'USD $10 gift card',amount:r.rodux,kind:'bonus',t:Date.now()},...(S.gifts||[])];save()}
     $('#gci',el).value='';
-    $('#gcwin',el).innerHTML=`<section class="gc-win">${gcFace(r.usd,true)}<div><h3>+${fmt0(r.rodux)} Rodux</h3><p>Your $${r.usd} gift card was added to your balance${r.withdrawable?'. You can withdraw it to Trade Empire.':' as bonus Rodux to play with on TradeBlacket.'}</p></div></section>`;
-    confetti(innerWidth/2,innerHeight/3,140);toast(`$${r.usd} gift card redeemed: +${fmt0(r.rodux)} Rodux`,'win');
+    $('#gcwin',el).innerHTML=`<section class="gc-win">${gcFace(r.usd,true)}<div><h3>USD $${r.usd} added</h3><p>Your gift card was added to your balance${r.withdrawable?'. You can withdraw it to Trade Empire.':' as bonus Rodux to play with on TradeBlacket.'}</p></div></section>`;
+    confetti(innerWidth/2,innerHeight/3,140);toast(`USD $${r.usd} gift card redeemed`,'win');
   };
 };
 
@@ -113,14 +114,14 @@ async function admGifts(box){
     <section class="card"><h4>What a dollar is worth</h4>
       <p class="ac-msg">${fmt0(rate.roduxPerUsd)} Rodux per US dollar = ${rate.roduxPerRobux} Rodux per Robux (median of the packs below) × ${rate.robuxPerUsd} Robux per dollar. ${esc(rate.source)}.</p>
       ${plTable(['Pack','Robux','Rodux per Robux'],rate.packs.slice().sort((a,b)=>a.perRobux-b.perRobux).map(p=>[esc(p.name),fmt0(p.robux),(Math.round(p.perRobux*100)/100).toFixed(2)]))}
-      <dl class="ac-kv">${rate.values.map(v=>`<div><dt>$${v.usd} card</dt><dd>${fmt0(v.rodux)}</dd></div>`).join('')}</dl></section>
+</section>
   </div>
-  <div class="sec-h"><h3 class="sec">All gift cards</h3><span class="note">${totals.made} made · ${totals.redeemed} redeemed · $${fmt0(totals.usdRedeemed)} = ${fmt0(totals.roduxRedeemed)} Rodux given</span></div>
-  ${plTable(['Code','Value','For','Status','Redeemed by','Made',''],cards.map(c=>[`<code data-copy="${esc(c.code)}">${esc(c.code)}</code>`,`$${c.usd}${c.withdrawable?' <span class="ac-pill is-gold">withdrawable</span>':''}`,esc(c.note||''),plStat(c.status==='active'?'open':c.status==='redeemed'?'paid':c.status)||esc(c.status),c.redeemedBy?`${plLink(c.redeemedId,c.redeemedBy)}<br><small>${fmt0(c.rodux)} Rodux · ${dtt(c.redeemedAt)}</small>`:'',`${dt(c.at)}${c.expires?`<br><small>expires ${dt(c.expires)}</small>`:''}`,c.status==='active'?`<button class="lnk" data-gcv="${esc(c.code)}">Cancel</button>`:'']),'No gift cards yet.')}`;
+  <div class="sec-h"><h3 class="sec">All gift cards</h3><span class="note">${totals.made} made · ${totals.redeemed} redeemed · USD $${fmt0(totals.usdRedeemed)} given away</span></div>
+  ${plTable(['Code','Value','For','Status','Redeemed by','Made',''],cards.map(c=>[`<code data-copy="${esc(c.code)}">${esc(c.code)}</code>`,`USD $${c.usd}${c.withdrawable?' <span class="ac-pill is-gold">withdrawable</span>':''}`,esc(c.note||''),plStat(c.status==='active'?'open':c.status==='redeemed'?'paid':c.status)||esc(c.status),c.redeemedBy?`${plLink(c.redeemedId,c.redeemedBy)}<br><small>${dtt(c.redeemedAt)}</small>`:'',`${dt(c.at)}${c.expires?`<br><small>expires ${dt(c.expires)}</small>`:''}`,c.status==='active'?`<button class="lnk" data-gcv="${esc(c.code)}">Cancel</button>`:'']),'No gift cards yet.')}`;
   $('#gcmk',box).onclick=async()=>{const usd=Number($('[name=gcu]:checked',box).value);
     const x=await api('/api/admin/giftcards',{usd,count:$('#gcn',box).value,note:$('#gcno',box).value,days:$('#gcd',box).value,withdrawable:$('#gcw',box).checked});
     if(!x.ok)return toast(x.j.error,'loss');
     toast(`${x.j.codes.length} gift card${x.j.codes.length===1?'':'s'} made.`,'win');await admGifts(box);
-    $('#gcout',box).innerHTML=`<p class="note">New $${x.j.usd} codes, worth ${fmt0(x.j.rodux)} Rodux each right now. Copy them now:</p><textarea class="txt gc-codes" readonly rows="${Math.min(8,x.j.codes.length)}">${x.j.codes.join('\n')}</textarea><button class="cta ghost inline" data-copy="${esc(x.j.codes.join('\n'))}">Copy all</button>`};
+    $('#gcout',box).innerHTML=`<p class="note">New USD $${x.j.usd} codes. Copy them now:</p><textarea class="txt gc-codes" readonly rows="${Math.min(8,x.j.codes.length)}">${x.j.codes.join('\n')}</textarea><button class="cta ghost inline" data-copy="${esc(x.j.codes.join('\n'))}">Copy all</button>`};
   $$('[data-gcv]',box).forEach(b=>b.onclick=async()=>{const x=await api('/api/admin/giftcards/void',{code:b.dataset.gcv});if(!x.ok)return toast(x.j.error,'loss');toast('Gift card cancelled.');admGifts(box)});
 }

@@ -118,7 +118,7 @@ function create({ db, tx, log = () => {}, isAdmin, universe, isBanned, siteOk, n
     return { ...res, code: mask(code) };
   }
   // for the wallet history (the browser adds these to the play balance once each)
-  const payouts = id => q.mine.all(id).map(g => ({ kind: g.withdrawable ? 'deposit' : 'bonus', amount: g.rodux, status: 'ok', reference: g.ref, reason: `$${g.usd} gift card`, created_at: g.redeemed_at }));
+  const payouts = id => q.mine.all(id).map(g => ({ kind: g.withdrawable ? 'deposit' : 'bonus', amount: g.rodux, status: 'ok', reference: g.ref, reason: `USD $${g.usd} gift card`, created_at: g.redeemed_at }));
 
   return { VALUES, rate, refresh, make, voidCard, adminView, redeem, payouts, GiftError, _packsFrom: packsFrom };
 }

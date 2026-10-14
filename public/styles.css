@@ -2055,8 +2055,9 @@ body.sw-lock #app,body.sw-lock .chat{visibility:hidden}
 .gcf:hover::after{transform:translateX(60%)}
 .gcf-top{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-weight:800;letter-spacing:.02em}
 .gcf-top i{font-style:normal;padding:2px 8px;border-radius:99px;background:rgba(0,0,0,.25);color:var(--a)}
+.gcf>b small{font-size:.38em;letter-spacing:.04em;margin-right:.25em;opacity:.85;vertical-align:.55em}
 .gcf>b{font-size:clamp(30px,3.6vw,44px);font-weight:800;letter-spacing:-.04em;line-height:1;color:var(--a);text-shadow:0 2px 12px rgba(0,0,0,.35)}
-.gcf.v500>b{background:linear-gradient(180deg,#FFF7E0,#E7C77F 55%,#A87A2E);-webkit-background-clip:text;background-clip:text;color:transparent}
+.gcf.v500>b span{background:linear-gradient(180deg,#FFF7E0,#E7C77F 55%,#A87A2E);-webkit-background-clip:text;background-clip:text;color:transparent}
 .gcf-bot{display:flex;justify-content:space-between;align-items:flex-end;font-size:12px}.gcf-bot span{display:inline-flex;gap:4px;align-items:center;font-weight:700}.gcf-bot small{opacity:.7}
 .gcf.sm{padding:10px 12px;border-radius:12px}.gcf.sm>b{font-size:26px}.gcf.sm .gcf-top,.gcf.sm .gcf-bot{font-size:10.5px}
 .gc-redeem label{display:block;font-size:13px;font-weight:700;color:#C9B27A;margin-bottom:8px}

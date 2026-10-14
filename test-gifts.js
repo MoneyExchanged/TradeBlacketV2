@@ -30,7 +30,7 @@ let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
   r = await call(2, '/api/giftcards/redeem', { code: c1.toLowerCase().replace(/-/g, ' ') }); assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.usd, 10); assert.equal(r.body.rodux, Math.round(10 * perUsd)); assert.equal(r.body.withdrawable, false); ok('a $10 card pays ten dollars of Rodux, typed in any case');
   let me = (await call(2, '/api/me')).body; assert.equal(me.balance, r.body.rodux); assert.equal(me.bonusLock, r.body.rodux); assert.equal(me.withdrawable, 0);
-  assert.ok(me.transfers.some(t => t.kind === 'bonus' && t.reason === '$10 gift card')); ok('it lands on the balance as bonus Rodux and shows in the history');
+  assert.ok(me.transfers.some(t => t.kind === 'bonus' && t.reason === 'USD $10 gift card')); ok('it lands on the balance as bonus Rodux and shows in the history');
   r = await call(3, '/api/giftcards/redeem', { code: c1 }); assert.equal(r.status, 400); assert.match(r.body.error, /already been redeemed/);
   r = await call(2, '/api/giftcards/redeem', { code: c1 }); assert.match(r.body.error, /You already redeemed/); ok('each card works once');
   r = await call(3, '/api/giftcards/redeem', { code: cw }); me = (await call(3, '/api/me')).body; assert.equal(me.bonusLock, 0); assert.equal(me.deposited, r.body.rodux); ok('a card made as withdrawable can go back to Trade Empire');

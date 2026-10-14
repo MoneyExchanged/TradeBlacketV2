@@ -161,7 +161,10 @@ function openWallet(tab='deposit',pre=null){
   }
   function wireLive(dep){
     const cap=()=>dep?GE.balance:Math.max(0,Math.min(Math.floor(S.bal-(S.lock||0)),WAPI.me?WAPI.me.withdrawable:0,GE.gameWithdrawable));
-    if($('#wmax',R))$('#wmax',R).onclick=()=>{$('#wa',R).value=cap()};
+    // Max reads the save again first, so it is always everything there is right now.
+    if($('#wmax',R))$('#wmax',R).onclick=async()=>{const b=$('#wmax',R);b.disabled=true;b.textContent='…';await loadGE(true);if(!B())return;draw();const w=$('#wa',R);if(w)w.value=cap()};
+    // Coming back from the game: read the save again.
+    if(!R._geFocus){R._geFocus=1;addEventListener('focus',async()=>{if(!R.isConnected||!$('#gx',R))return;const v=$('#wa',R)&&$('#wa',R).value;await loadGE(true);if(!B()||!$('#gx',R))return;draw();if(v&&$('#wa',R))$('#wa',R).value=v})}
     if($('#wgo',R))$('#wgo',R).onclick=()=>direct(dep?'deposit':'withdraw');
     if($('#wre',R))$('#wre',R).onclick=async()=>{$('#wre',R).innerHTML='<div class="spin sm"></div>Checking';await loadGE(true);draw()};
   }
@@ -173,7 +176,8 @@ function openWallet(tab='deposit',pre=null){
       ${history('in')}
       <p class="wnote">Deposits follow the <button class="lnk" data-legal="cds">${TE.name} Currency Deduction Service</button>.</p>`;
     $('#wbk',R).onclick=()=>{method=null;draw()};
-    if(WAPI.live){if(GE)wireLive(true);else loadGE().then(()=>{if(B()&&tab==='deposit'&&method)draw()});return}
+    // Always read the save again before showing what can be deposited: the game may have changed it.
+    if(WAPI.live){if(GE&&Date.now()-geAt<8000)wireLive(true);else{GE=null;$('#gx',R).innerHTML=liveBody(true);loadGE(true).then(()=>{if(B()&&tab==='deposit'&&method)draw()})}return}
     $('#wmax',R).onclick=()=>{$('#wa',R).value=Math.floor(teState().rodux)};
     $('#wgo',R).onclick=async()=>{const te=teState(),a=Math.floor(+$('#wa',R).value||0),e=$('#we',R);
       if(a<1){e.textContent='Enter a whole amount of Rodux.';return}
@@ -191,7 +195,7 @@ function openWallet(tab='deposit',pre=null){
       ${WAPI.live?`<div id="gx">${liveBody(false)}</div>`:`<div class="wsim"><span class="wlbl">Preview · ${TE.name} is simulated</span><div class="amt" data-cap="${w.canBack}">${chip(20)}<input id="wa" type="number" min="1" step="1" value="${w.canBack}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="lx-quick"><button type="button" data-q=".1">10%</button><button type="button" data-q=".25">25%</button><button type="button" data-q=".5">50%</button><button type="button" data-q="1">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${w.canBack<1?' disabled':''}>Withdraw</button></div>`}
       ${history('out')}`;
     $('#wbk',R).onclick=()=>{method=null;draw()};
-    if(WAPI.live){if(GE)wireLive(false);else loadGE().then(()=>{if(B()&&tab==='withdraw'&&method)draw()});return}
+    if(WAPI.live){if(GE&&Date.now()-geAt<8000)wireLive(false);else{GE=null;const gx=$('#gx',R);if(gx)gx.innerHTML=liveBody(false);loadGE(true).then(()=>{if(B()&&tab==='withdraw'&&method)draw()})}return}
     $('#wmax',R).onclick=()=>{$('#wa',R).value=wState().canBack};
     $('#wgo',R).onclick=async()=>{const a=Math.floor(+$('#wa',R).value||0),e=$('#we',R),can=wState().canBack;
       if(a<1){e.textContent='Enter a whole amount of Rodux.';return}
