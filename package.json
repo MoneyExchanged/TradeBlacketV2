@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --env-file=.env server.js",
-    "test": "node test.js"
+    "test": "node test.js",
+    "test:bridge": "node test-bridge.js"
   }
 }

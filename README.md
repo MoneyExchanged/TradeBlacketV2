@@ -25,6 +25,21 @@ The two game routes follow `ReplicatedStorage.Modules.SiteWalletRules` exactly:
 - **Withdrawal cap.** A withdrawal can't exceed `min(balance − bonus lock, deposited − withdrawn)`. The game enforces the same cap again on its side.
 - **Responses.** A refusal returns 4xx with `{error}`, which the game shows to the player. A crash returns 5xx, and the game retries with the same key.
 
+## Offline transfers (deposit and withdraw from the website)
+
+When a player is **not** in Trade Empire, the website can move Rodux straight to and from their save
+through Roblox Open Cloud, and show their Trade Empire balance. `gamebridge.js` explains how this stays
+safe: it only writes a save no game server has open, every write is conditional on the version it
+read, it keeps the game's own `siteWallet` books, and each transfer is stamped into the save so an
+interrupted one is resolved by reading the save back. Players who are in the game use the in-game
+TradeBlacket button as before.
+
+It needs an Open Cloud API key in `ROBLOX_OPEN_CLOUD_KEY` with DataStore **Read Entry** and
+**Update Entry** permission for the Trade Empire experience. Optional: `ROBLOX_UNIVERSE_ID`
+(default 10108739296, the dev place) and `ROBLOX_DATASTORE` (default `PlayerStore_v1`).
+Without a key the website falls back to in-game transfers only. `npm run test:bridge` runs it
+against a fake data store.
+
 ## Going live
 
 1. **Host it over https.** Roblox only calls https addresses. Any Node host works (Railway, Fly.io, Render, a VPS behind Caddy). Keep `tradeblacket.db` on a persistent disk and back it up.

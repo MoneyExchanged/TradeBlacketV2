@@ -213,7 +213,9 @@ function me(req, res) {
   return send(res, 200, {
     robloxId: u.roblox_id, username: u.username, balance: u.balance, bonusLock: u.bonus_lock,
     deposited: u.deposited, withdrawn: u.withdrawn, withdrawable: withdrawable(u),
-    transfers: q.recent.all(u.roblox_id),
+    // in-game transfers and website (offline) transfers together, newest first
+    transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id))
+      .sort((a, b) => b.created_at - a.created_at).slice(0, 25),
   });
 }
 function logout(req, res) {
@@ -221,6 +223,27 @@ function logout(req, res) {
   if (s) q.dropSession.run(s.token);
   res.setHeader('Set-Cookie', 'tb_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
   return send(res, 200, { ok: true });
+}
+
+/* ---------- offline transfers (website <-> Trade Empire save, through Roblox Open Cloud) ---------- */
+const bridge = require('./gamebridge.js').create({
+  db, tx, log: (...a) => log(...a),
+  siteWithdrawable: robloxId => { const u = q.user.get(robloxId); return u ? withdrawable(u) : 0; }
+});
+const moving = new Set();
+async function gameWallet(req, res) {
+  const s = sessionUser(req); if (!s || !s.user) return send(res, 401, { error: 'Not signed in' });
+  try { return send(res, 200, await bridge.status(s.user.roblox_id)); }
+  catch (e) { log('game wallet', e.message); return send(res, 502, { error: 'Could not read your Trade Empire save right now.' }); }
+}
+async function gameMove(req, res, kind) {
+  const s = sessionUser(req); if (!s || !s.user) return send(res, 401, { error: 'Not signed in' });
+  const b = await readJson(req), amount = b ? Number(b.amount) : NaN, id = s.user.roblox_id;
+  if (moving.has(id)) return send(res, 409, { error: 'Your last transfer is still finishing.' });
+  moving.add(id);
+  try { const r = await bridge[kind](id, amount); return send(res, 200, r); }
+  catch (e) { if (e instanceof bridge.BridgeError) return send(res, e.code, { error: e.message, ...(e.extra || {}) }); log('game move', e.stack || e); return send(res, 500, { error: 'Something went wrong. Nothing was moved.' }); }
+  finally { moving.delete(id); }
 }
 
 /* ---------- http plumbing ---------- */
@@ -263,7 +286,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/auth/verify') return await authVerify(req, res);
     if (req.method === 'POST' && p === '/api/auth/logout') return logout(req, res);
     if (req.method === 'GET' && p === '/api/me') return me(req, res);
-    if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true });
+    if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true, storage: CFG.db.startsWith('/data') || (process.env.RAILWAY_VOLUME_MOUNT_PATH && CFG.db.startsWith(process.env.RAILWAY_VOLUME_MOUNT_PATH)) ? 'volume' : 'local', offlineTransfers: bridge.enabled() });
+    if (req.method === 'GET' && p === '/api/game/wallet') return await gameWallet(req, res);
+    if (req.method === 'POST' && p === '/api/game/deposit') return await gameMove(req, res, 'deposit');
+    if (req.method === 'POST' && p === '/api/game/withdraw') return await gameMove(req, res, 'withdraw');
     if (p.startsWith('/api/')) return send(res, 404, { error: 'Not found' });
     if (req.method === 'GET') return serveStatic(req, res);
     return send(res, 405, { error: 'Method not allowed' });
@@ -274,5 +300,5 @@ const server = http.createServer(async (req, res) => {
     return send(res, 500, { error: 'Server error' });
   }
 });
-if (require.main === module) server.listen(CFG.port, () => log(`TradeBlacket server on :${CFG.port}`));
+if (require.main === module) server.listen(CFG.port, () => log(`TradeBlacket server on :${CFG.port} · database ${CFG.db} · offline transfers ${bridge.enabled() ? 'on' : 'off (no ROBLOX_OPEN_CLOUD_KEY)'}`));
 module.exports = { server, db };

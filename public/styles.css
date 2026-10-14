@@ -37,7 +37,9 @@ button:disabled{cursor:not-allowed}
 .side{grid-area:side;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding-left:max(0px,calc(env(safe-area-inset-left,0px) - 16px))}
 .side-h{height:60px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);flex:none}
 .logo{display:flex;align-items:center;gap:9px;cursor:pointer;min-width:0}
-.logo b{font-weight:700;font-size:17px;letter-spacing:-.01em;white-space:nowrap}
+.logo b{font-weight:800;font-size:18px;letter-spacing:-.02em;white-space:nowrap}
+.tbmark{flex:none;filter:drop-shadow(0 0 10px rgba(31,203,107,.35));overflow:visible}
+.gate .tbmark{filter:drop-shadow(0 0 16px rgba(31,203,107,.45))}
 .logo b span{color:var(--accent)}
 .nav{flex:1;overflow-y:auto;padding:10px 10px 14px;scrollbar-width:thin;scrollbar-color:var(--raise) transparent}
 .nav h6{margin:14px 10px 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
@@ -1113,3 +1115,10 @@ a.cta{text-decoration:none}
 @media (prefers-reduced-motion:reduce){.wbody,.mtile{animation:none;transition:none}}
 .wsim .err:empty{display:none}
 body:has(#modal .scrim) .balpop{display:none}
+.wsim.live{border-style:solid;border-color:var(--line);background:var(--surface-2)}
+.wmore{border-top:1px solid var(--line);padding-top:10px}
+.wmore summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);list-style:none;display:flex;align-items:center;gap:6px}
+.wmore summary::-webkit-details-marker{display:none}
+.wmore summary::before{content:"";width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s}
+.wmore[open] summary::before{transform:rotate(45deg)}
+.wmore .wsteps{margin-top:8px}
