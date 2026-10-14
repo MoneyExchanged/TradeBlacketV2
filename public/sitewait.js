@@ -21,7 +21,7 @@ async function siteGate(){
   if($('#gate')&&$('#gate').innerHTML.trim()){SW.wait=1;return}
   await swLoad();const s=SW.s;if(s&&s.admin)swAdminNav();
   if(!s||(!s.banned&&(s.gate===false||s.access))){swClose();return}
-  SW.on=1;if(!SW.away)drawSiteWait();
+  SW.on=1;if(SW_FREE.includes(cur))SW.away=1;if(!SW.away)drawSiteWait();
   if(!SW.poll)SW.poll=setInterval(async()=>{await swLoad();if(SW.s&&SW.s.access&&!SW.s.banned)swClose(true);else if(!SW.away)drawSiteWait()},20000);
 }
 function drawSiteWait(){
@@ -40,7 +40,7 @@ function drawSiteWait(){
       <div class="wl-place sw-card"><span class="sw-who">${avatar(me(),40)}<b>${esc(S.user.name)}</b></span>
         <button class="cta inline" id="swwr">Withdraw Rodux</button><button class="cta ghost inline" id="swwi">Withdraw limiteds</button><button class="cta ghost inline" id="swsup">Open a Support ticket</button></div>
     </div>
-    <div class="sw-foot"><button id="swo">Sign out</button><button data-legal="tos">Terms of Service</button><button data-away="support">Support</button><span>Signed in as ${esc(S.user.name)}</span></div></div>`;
+    <div class="sw-foot"><button id="swo">Sign out</button><button data-legal="tos">Terms of Service</button><button data-away="support">Support</button><button data-away="tradeempire">Trade Empire account</button><span>Signed in as ${esc(S.user.name)}</span></div></div>`;
     $('#swwr',el).onclick=()=>openWallet('withdraw');$('#swwi',el).onclick=()=>openInventory('site');
     $('#swsup',el).onclick=()=>swAway('support');
     $('#swo',el).onclick=swSignOut;return}
@@ -61,7 +61,7 @@ function drawSiteWait(){
         ${s.joined?`<div class="sw-ref"><b>Invite friends</b><span>Get ${fmt0(REF_REWARD())} Rodux for every friend who signs up with your link and gets in.</span><button class="cta ghost inline" data-copy="${esc(refLink())}">Copy my invite link</button></div>`:''}
       </div>
     </div>
-    <div class="sw-foot"><button id="swo">Sign out</button><button data-legal="tos">Terms of Service</button><button data-away="support">Support</button><span>Signed in as ${esc(S.user.name)}</span></div>
+    <div class="sw-foot"><button id="swo">Sign out</button><button data-legal="tos">Terms of Service</button><button data-away="support">Support</button><button data-away="tradeempire">Trade Empire account</button><span>Signed in as ${esc(S.user.name)}</span></div>
   </div>`;
   const j=$('#swj',el);if(j)j.onclick=async()=>{j.disabled=true;
     if(WAPI.live){const r=await api('/api/site-waitlist/join',{});if(!r.ok){j.disabled=false;return toast(r.j.error||'Could not join. Try again.','loss')}SW.s=r.j}
@@ -81,7 +81,8 @@ function swSignOut(){if(WAPI.live)fetch('/api/auth/logout',{method:'POST'}).catc
 // The screen cannot be clicked away: if it is removed while the player has no access, it comes back,
 // and moving to another page brings it back too. (The server refuses everything anyway.)
 new MutationObserver(()=>{if(SW.on&&!SW.away&&S.user&&!$('#sitewait'))drawSiteWait()}).observe(document.body,{childList:true});
-{const g0=go;go=function(...a){if(SW.on&&S.user&&a[0]!=='support'){SW.away=0;drawSiteWait();return}return g0.apply(this,a)}}
+const SW_FREE=['support','tradeempire'];
+{const g0=go;go=function(...a){if(SW.on&&S.user&&!SW_FREE.includes(a[0])){SW.away=0;drawSiteWait();return}if(SW.on&&SW_FREE.includes(a[0])){SW.away=1;const o=$('#sitewait');if(o)o.remove();document.body.classList.remove('sw-open','sw-lock')}return g0.apply(this,a)}}
 // A slow gold line behind the waitlist, same family as the sign-in page.
 function swChart(cv){
   if(!cv||cv._on)return;cv._on=1;const ctx=cv.getContext('2d');let pts=[],v=.5;for(let i=0;i<90;i++){v+=(rnd()-.48)*.03;v=Math.min(.8,Math.max(.3,v));pts.push(v)}let off=0;
@@ -95,10 +96,11 @@ function swChart(cv){
 PAGES.admin=(el,tab)=>{
   const isAdmin=(WAPI.me&&WAPI.me.admin)||(SW.s&&SW.s.admin);
   if(!isAdmin){el.innerHTML=`<div class="empty"><h3>Admins only</h3><p>This page is for the TradeBlacket team.</p></div>`;return}
-  const t=['slots','bans'].includes(tab)?tab:'site';
+  const tb=String(tab||''),t=['slots','bans'].includes(tb)?tb:tb.startsWith('players')?'players':'site';
   el.innerHTML=`<div class="page-h"><div><div class="crumb"><button data-go="home">Home</button> / Admin</div><h2>Admin</h2><p>Let players in, make access codes and see who is waiting.</p></div></div>
-    <div class="mk-tabs lx-seg adm-seg" style="--n:3;--i:${['site','slots','bans'].indexOf(t)}"><button data-go="admin" data-p="site" class="${t==='site'?'on':''}">Site waitlist</button><button data-go="admin" data-p="slots" class="${t==='slots'?'on':''}">Slots waitlist</button><button data-go="admin" data-p="bans" class="${t==='bans'?'on':''}">Bans</button><i></i></div>
+    <div class="mk-tabs lx-seg adm-seg" style="--n:4;--i:${['site','slots','bans','players'].indexOf(t)}"><button data-go="admin" data-p="site" class="${t==='site'?'on':''}">Site waitlist</button><button data-go="admin" data-p="slots" class="${t==='slots'?'on':''}">Slots waitlist</button><button data-go="admin" data-p="bans" class="${t==='bans'?'on':''}">Bans</button><button data-go="admin" data-p="players" class="${t==='players'?'on':''}">Players</button><i></i></div>
     <section class="wl-admin" id="adm"></section>`;
+  if(t==='players'){admPlayersTab($('#adm',el),tb.split(':')[1]||'');return}
   if(WAPI.live)(t==='bans'?drawBans($('#adm',el)):drawAdmin($('#adm',el),t));else $('#adm',el).innerHTML=`<div class="empty"><h3>Admin tools run on the live site</h3><p>Letting players in and making codes need the TradeBlacket server.</p></div>`;
 };
 

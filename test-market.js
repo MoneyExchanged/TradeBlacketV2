@@ -106,8 +106,8 @@ let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
   process.env.__noop = '';
   db.prepare('INSERT OR IGNORE INTO users (roblox_id, username, created_at) VALUES (496295513, ?, 0)').run('Owner'); db.prepare('INSERT INTO sessions VALUES (?, 496295513, 0)').run('f'.repeat(64)); jar.own = 'tb_session=' + 'f'.repeat(64);
   r = await call('own', '/api/support'); assert.equal(r.body.admin, true); assert.ok(r.body.tickets.some(t => t.id === tk && t.walletId));
-  r = await call('own', `/api/support/${tk}/reply`, { body: 'Leave the game and check again in a minute.' }); assert.equal(r.body.status, 'answered'); assert.equal(r.body.messages.at(-1).staff, 1);
-  r = await call(22, '/api/support'); assert.equal(r.body.tickets[0].messages.length, 2); ok('admins see every ticket and reply as support');
+  r = await call('own', `/api/support/${tk}/reply`, { body: 'Leave the game and check again in a minute.' }); assert.equal(r.body.status, 'answered'); assert.equal(r.body.messages.at(-1).staff, true);
+  r = await call(22, '/api/support'); assert.equal(r.body.tickets[0].messages.filter(m => m.kind === 'msg').length, 2); ok('admins see every ticket and reply as support');
   r = await call(22, `/api/support/${tk}/close`, {}); r = await call(22, '/api/support'); assert.equal(r.body.tickets[0].status, 'closed'); ok('players can close their tickets');
 
   console.log(`\nAll ${n} checks passed.`);

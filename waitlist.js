@@ -86,9 +86,10 @@ function create({ db, tx, scope = 'slots', blocked = () => false }) {
     if (!isAdmin(admin)) throw new WaitError('Only admins can do that.', 403);
     return { waiting: q.waiting.get().n, total: q.total.get().n, granted: q.granted.get().n, list: q.list.all(), codes: q.codes.all() };
   }
+  function grant(admin, id) { if (!isAdmin(admin)) throw new WaitError('Only admins can do that.', 403); q.join.run(Number(id), now()); q.grant.run(Number(id), 'admin', now()); return { ok: true }; }
   function revoke(admin, id) { if (!isAdmin(admin)) throw new WaitError('Only admins can do that.', 403); q.revoke.run(Number(id)); return { ok: true }; }
 
-  return { scope, status, join, redeem, makeCodes, grantNext, adminView, revoke, hasAccess, isAdmin, WaitError };
+  return { scope, status, join, redeem, makeCodes, grantNext, adminView, grant, revoke, hasAccess, isAdmin, WaitError };
 }
 
 module.exports = { create };

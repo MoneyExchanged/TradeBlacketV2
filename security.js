@@ -27,11 +27,18 @@ function create({ db, tx, secret, isAdmin, log = () => {} }) {
     CREATE INDEX IF NOT EXISTS sightings_user ON sightings (roblox_id);
     CREATE TABLE IF NOT EXISTS bans (roblox_id INTEGER PRIMARY KEY, reason TEXT NOT NULL, linked_id INTEGER, by_id INTEGER, created_at INTEGER NOT NULL);
   `);
+  // kind: 'ban' (automatic or by an admin), 'suspend' (ends at expires_at), 'terminate' (permanent)
+  { const c = db.prepare('PRAGMA table_info(bans)').all().map(x => x.name);
+    if (!c.includes('kind')) db.exec("ALTER TABLE bans ADD COLUMN kind TEXT NOT NULL DEFAULT 'ban'");
+    if (!c.includes('expires_at')) db.exec('ALTER TABLE bans ADD COLUMN expires_at INTEGER'); }
   const q = {
     seen: db.prepare(`INSERT INTO sightings (kind, hash, roblox_id, first_at, last_at) VALUES (?,?,?,?,?) ON CONFLICT (kind, hash, roblox_id) DO UPDATE SET last_at = excluded.last_at`),
     others: db.prepare(`SELECT roblox_id, last_at FROM sightings WHERE kind = ? AND hash = ? AND roblox_id != ? ORDER BY first_at`),
     mine: db.prepare(`SELECT kind, hash FROM sightings WHERE roblox_id = ?`),
-    ban: db.prepare(`INSERT OR IGNORE INTO bans (roblox_id, reason, linked_id, by_id, created_at) VALUES (?,?,?,?,?)`),
+    ban: db.prepare(`INSERT OR IGNORE INTO bans (roblox_id, reason, linked_id, by_id, created_at, kind, expires_at) VALUES (?,?,?,?,?,?,?)`),
+    setBan: db.prepare(`INSERT OR REPLACE INTO bans (roblox_id, reason, linked_id, by_id, created_at, kind, expires_at) VALUES (?,?,?,?,?,?,?)`),
+    linked: db.prepare(`SELECT o.roblox_id, o.kind, MAX(o.last_at) AS last_at, u.username FROM sightings m JOIN sightings o ON o.kind = m.kind AND o.hash = m.hash AND o.roblox_id != m.roblox_id LEFT JOIN users u ON u.roblox_id = o.roblox_id WHERE m.roblox_id = ? GROUP BY o.roblox_id, o.kind`),
+    counts: db.prepare(`SELECT kind, COUNT(*) AS n FROM sightings WHERE roblox_id = ? GROUP BY kind`),
     unban: db.prepare(`DELETE FROM bans WHERE roblox_id = ?`),
     banned: db.prepare(`SELECT * FROM bans WHERE roblox_id = ?`),
     list: db.prepare(`SELECT b.*, u.username, l.username AS linked_name FROM bans b LEFT JOIN users u ON u.roblox_id = b.roblox_id LEFT JOIN users l ON l.roblox_id = b.linked_id ORDER BY b.created_at DESC LIMIT 300`),
@@ -78,11 +85,14 @@ function create({ db, tx, secret, isAdmin, log = () => {} }) {
   }
 
   /* ---------- bans ---------- */
-  const isBanned = id => !isAdmin(id) && !!q.banned.get(id);
-  const banInfo = id => (isAdmin(id) ? null : q.banned.get(id) || null);
-  function ban(id, reason, linked = null, by = null) {
+  // A suspension that has run out no longer counts.
+  const live = b => (b && (!b.expires_at || b.expires_at > Date.now()) ? b : null);
+  const isBanned = id => !isAdmin(id) && !!live(q.banned.get(id));
+  const banInfo = id => (isAdmin(id) ? null : live(q.banned.get(id)));
+  // replace: an admin action overrides whatever was there (e.g. a suspension becomes a ban)
+  function ban(id, reason, linked = null, by = null, kind = 'ban', expires = null, replace = false) {
     if (isAdmin(id)) return false;
-    const r = q.ban.run(id, reason, linked, by, Date.now()).changes > 0;
+    const r = (replace ? q.setBan : q.ban).run(id, reason, linked, by, Date.now(), kind, expires).changes > 0;
     if (r) { q.dropAccess.forEach(s => { try { s.run(id); } catch {} }); log('ban', id, reason, linked || ''); }
     return r;
   }
@@ -144,7 +154,17 @@ function create({ db, tx, secret, isAdmin, log = () => {} }) {
     return { bans: q.list.all() };
   }
 
-  return { ip, device, limit, onSignIn, touch, shared, isBanned, banInfo, ban, adminBan, adminUnban, adminList, SecError };
+  // Other accounts that share a network, device or hardware with this one (for staff).
+  function linked(id) {
+    const by = new Map();
+    for (const r of q.linked.all(id)) {
+      const e = by.get(r.roblox_id) || { robloxId: r.roblox_id, username: r.username, via: [], lastAt: 0, banned: isBanned(r.roblox_id) };
+      e.via.push(r.kind); e.lastAt = Math.max(e.lastAt, r.last_at); by.set(r.roblox_id, e);
+    }
+    return [...by.values()].sort((a, b) => b.lastAt - a.lastAt).slice(0, 50);
+  }
+  const seenCounts = id => Object.fromEntries(q.counts.all(id).map(r => [r.kind, r.n]));
+  return { ip, device, limit, onSignIn, touch, shared, isBanned, banInfo, ban, adminBan, adminUnban, adminList, linked, seenCounts, SecError };
 }
 
 module.exports = { create, SecError };

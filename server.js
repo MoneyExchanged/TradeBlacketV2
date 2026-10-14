@@ -34,7 +34,7 @@ const CFG = {
   db: process.env.DB_PATH || path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname, 'tradeblacket.db'),
   publicDir: process.env.PUBLIC_DIR || path.join(__dirname, 'public'),
   cookieSecure: process.env.COOKIE_SECURE !== 'false',
-  maxBody: 4096,
+  maxBody: 16384,
 };
 if (CFG.secret.length < 16) {
   console.error('GAME_WEBHOOK_SECRET must be set (16+ characters) and match SECRET in ServerStorage.SiteWalletConfig.');
@@ -236,7 +236,7 @@ function me(req, res) {
     legal: { tos: u.tos_version === LEGAL.tos, cds: u.cds_version === LEGAL.cds, versions: LEGAL },
     limits: limits.status(u.roblox_id), itemValue: items.siteItemValue(u.roblox_id),
     studio: provider.recent(u.roblox_id), slots: waitlist.status(u.roblox_id), site: { gate: SITE_GATE, access: siteOk(u.roblox_id) },
-    banned: ban ? { reason: ban.reason, at: ban.created_at } : null, referral: { code: referrals.codeFor(u.roblox_id), reward: referrals.REWARD },
+    banned: ban ? { reason: ban.reason, at: ban.created_at, kind: ban.kind || 'ban', until: ban.expires_at || null } : null, referral: { code: referrals.codeFor(u.roblox_id), reward: referrals.REWARD },
     walletId: social.walletId(u.roblox_id), tier: (social.tier(u.roblox_id).catch(() => {}), u.tier || null), admin: waitlist.isAdmin(u.roblox_id),
     // in-game transfers and website (offline) transfers together, newest first
     transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id)).concat(referrals.payouts(u.roblox_id))
@@ -253,7 +253,7 @@ function logout(req, res) {
 /* ---------- offline transfers (website <-> Trade Empire save, through Roblox Open Cloud) ---------- */
 // Deposits need the Deduction Service accepted; everything except withdrawals respects limits.
 function guard(robloxId, kind, amount) {
-  if (kind !== 'withdraw' && security.isBanned(robloxId)) return BANNED;
+  if (kind !== 'withdraw' && security.isBanned(robloxId)) return bannedMsg(robloxId);
   if (kind !== 'withdraw' && !siteOk(robloxId)) return SITE_CLOSED;
   const u = q.user.get(robloxId);
   if ((kind === 'deposit' || kind === 'items') && (!u || u.cds_version !== LEGAL.cds)) return 'Please read and accept the Trade Empire Currency Deduction Service first.';
@@ -276,6 +276,7 @@ const SITE_GATE = String(process.env.SITE_WAITLIST || 'on').toLowerCase() !== 'o
 const security = require('./security.js').create({ db, tx, secret: CFG.secret, isAdmin: id => waitlist.isAdmin(id), log: (...a) => log(...a) });
 const siteOk = id => !security.isBanned(id) && (!SITE_GATE || siteList.hasAccess(id));
 const BANNED = 'This account is banned. You can still bring your Rodux and items back to Trade Empire.';
+const bannedMsg = id => { const b = security.banInfo(id); if (!b) return BANNED; if (b.kind === 'suspend') return `This account is suspended until ${new Date(b.expires_at).toUTCString().slice(5, 22)} UTC. You can still bring your Rodux and items back to Trade Empire.`; if (b.kind === 'terminate') return 'This account has been terminated. You can still bring your Rodux and items back to Trade Empire.'; return BANNED; };
 // Refer a friend: 450 bonus Rodux once the friend is in.
 const referrals = require('./referrals.js').create({
   db, tx, secret: CFG.secret, siteOk: id => siteOk(id), isBanned: id => security.isBanned(id), shared: (a, b) => security.shared(a, b),
@@ -287,11 +288,21 @@ async function waitlistRoute(req, res, p) {
   const site = p.startsWith('/api/site-waitlist') || p.startsWith('/api/admin/site/');
   const L = site ? siteList : waitlist;
   p = p.replace('/api/site-waitlist', '/api/waitlist').replace('/api/admin/site/', '/api/admin/');
-  if (req.method === 'GET' && p === '/api/waitlist') { const s = sessionUser(req); const st = L.status(s && s.user ? s.user.roblox_id : null); if (site) { const bi = s && s.user ? security.banInfo(s.user.roblox_id) : null; st.gate = SITE_GATE; if (!SITE_GATE) st.access = true; if (bi) { st.access = false; st.banned = { reason: bi.reason, at: bi.created_at }; } } return send(res, 200, st); }
+  if (req.method === 'GET' && p === '/api/waitlist') { const s = sessionUser(req); const st = L.status(s && s.user ? s.user.roblox_id : null); if (site) { const bi = s && s.user ? security.banInfo(s.user.roblox_id) : null; st.gate = SITE_GATE; if (!SITE_GATE) st.access = true; if (bi) { st.access = false; st.banned = { reason: bi.reason, at: bi.created_at, kind: bi.kind || 'ban', until: bi.expires_at || null }; } } return send(res, 200, st); }
   const u = authed(req, res); if (!u) return;
   const b = (await readJson(req)) || {};
   try {
     if (req.method === 'GET' && p === '/api/admin/bans') return send(res, 200, security.adminList(u.roblox_id));
+    if (req.method === 'GET' && p === '/api/admin/account') {
+      if (!waitlist.isAdmin(u.roblox_id)) return send(res, 403, { error: 'Only admins can do that.' });
+      const who = new URL(req.url, 'http://x').searchParams.get('who');
+      return send(res, 200, await account.snapshot(account.find(who), { staff: true }));
+    }
+    if (req.method === 'POST' && p === '/api/admin/mod') {
+      const r = account.moderate(u.roblox_id, b);
+      if (b.ticketId) { if (r.message) social.system(b.ticketId, u.roblox_id, r.message, false); if (r.internal) social.system(b.ticketId, u.roblox_id, 'Staff note: ' + r.internal, true); }
+      return send(res, 200, r);
+    }
     if (req.method === 'POST' && p === '/api/admin/ban') return send(res, 200, security.adminBan(u.roblox_id, b.who, b.reason));
     if (req.method === 'POST' && p === '/api/admin/unban') return send(res, 200, security.adminUnban(u.roblox_id, b.robloxId));
     if (req.method === 'GET' && p === '/api/admin/netcheck') { if (!waitlist.isAdmin(u.roblox_id)) return send(res, 403, { error: 'Only admins can do that.' }); return send(res, 200, { realIp: req.headers['x-real-ip'] || null, forwardedFor: req.headers['x-forwarded-for'] || null, socket: req.socket.remoteAddress, used: security.ip(req) }); }
@@ -301,26 +312,54 @@ async function waitlistRoute(req, res, p) {
     if (req.method === 'POST' && p === '/api/admin/codes') return send(res, 200, L.makeCodes(u.roblox_id, b.count, b.uses, b.note));
     if (req.method === 'POST' && p === '/api/admin/grant') return send(res, 200, L.grantNext(u.roblox_id, b.count));
     if (req.method === 'POST' && p === '/api/admin/revoke') return send(res, 200, L.revoke(u.roblox_id, b.robloxId));
-  } catch (e) { if (e instanceof L.WaitError || e instanceof security.SecError) return send(res, e.code, { error: e.message }); throw e; }
+  } catch (e) { if (e instanceof L.WaitError || e instanceof security.SecError || e instanceof account.AccountError) return send(res, e.code, { error: e.message }); throw e; }
   return send(res, 404, { error: 'Not found' });
 }
 const GBX = require('./gamebridge.js');
 const social = require('./social.js').create({
   db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), secret: CFG.secret,
+  uploadDir: path.join(path.dirname(CFG.db), 'uploads'), forPlayer: s => account.forPlayer(s),
   readSave: async id => { if (!GBX.enabled()) return null; const e = await GBX.ocGet(String(id), process.env.ROBLOX_DATASTORE || 'PlayerStore_v1'); return e && e.value; },
+});
+// A player's whole account (Roblox, Trade Empire save, TradeBlacket) and staff actions on it.
+const account = require('./account.js').create({
+  db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), security, siteList, items, GB: GBX, social, referrals, withdrawable,
 });
 async function socialRoute(req, res, p) {
   const s = sessionUser(req), me = s && s.user ? s.user.roblox_id : null;
   try {
     if (req.method === 'GET' && p.startsWith('/api/profile/')) return send(res, 200, await social.getProfile(decodeURIComponent(p.slice(13)), me));
     if (!me) return send(res, 401, { error: 'Not signed in' });
+    // screenshots: raw image bytes in, an id out; served only to the sender, the ticket owner and staff
+    if (req.method === 'POST' && p === '/api/support/upload') {
+      try { security.limit(req, 'upload', 60, 36e5); } catch (e) { return send(res, e.code, { error: e.message }); }
+      let raw; try { raw = await readRaw(req, social.MAX_FILE + 1); } catch { return send(res, 413, { error: 'Screenshots can be up to 5 MB.' }); }
+      return send(res, 200, social.upload(me, raw));
+    }
+    let fm;
+    if (req.method === 'GET' && (fm = p.match(/^\/api\/support\/file\/([0-9a-f]{24})$/))) {
+      const f = social.file(me, fm[1]); if (!f) return send(res, 404, { error: 'Not found' });
+      res.writeHead(200, { 'Content-Type': f.mime, 'Content-Length': f.size, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Content-Disposition': 'inline' });
+      return fs.createReadStream(f.path).on('error', () => res.end()).pipe(res);
+    }
     const b = req.method === 'POST' ? (await readJson(req)) || {} : {};
-    if (req.method === 'POST' && p === '/api/profile') { if (!siteOk(me)) return send(res, 403, { error: security.isBanned(me) ? BANNED : SITE_CLOSED, siteWaitlist: true }); return send(res, 200, await social.updateProfile(me, b)); }
+    if (req.method === 'POST' && p === '/api/profile') { if (!siteOk(me)) return send(res, 403, { error: security.isBanned(me) ? bannedMsg(me) : SITE_CLOSED, siteWaitlist: true }); return send(res, 200, await social.updateProfile(me, b)); }
     if (req.method === 'GET' && p === '/api/support') return send(res, 200, social.tickets(me));
-    if (req.method === 'POST' && p === '/api/support') return send(res, 200, social.openTicket(me, b));
+    if (req.method === 'POST' && p === '/api/support') {
+      try { security.limit(req, 'ticket', 10, 36e5); } catch (e) { return send(res, e.code, { error: e.message }); }
+      // the player's whole account goes into the ticket for staff
+      let snap = null; try { snap = await account.snapshot(me, { staff: true }); } catch (e) { log('snapshot', e.message); }
+      return send(res, 200, social.openTicket(me, b, snap));
+    }
     let m;
-    if (req.method === 'POST' && (m = p.match(/^\/api\/support\/(TKT-[0-9A-F]{8})\/(reply|close)$/))) return send(res, 200, m[2] === 'reply' ? social.reply(me, m[1], b.body) : social.close(me, m[1]));
-  } catch (e) { if (e instanceof social.SocialError) return send(res, e.code, { error: e.message }); throw e; }
+    if (req.method === 'POST' && (m = p.match(/^\/api\/support\/(TKT-[0-9A-F]{8})\/(reply|close|reopen|account)$/))) {
+      if (m[2] === 'reply') return send(res, 200, social.reply(me, m[1], b.body, b.files, !!b.internal));
+      if (m[2] === 'close') return send(res, 200, social.close(me, m[1]));
+      if (m[2] === 'reopen') return send(res, 200, social.reopen(me, m[1]));
+      const owner = social.ticketOwner(m[1]); if (!owner || !waitlist.isAdmin(me)) return send(res, 404, { error: 'Ticket not found.' });
+      return send(res, 200, social.pushAccount(me, m[1], await account.snapshot(owner, { staff: true })));
+    }
+  } catch (e) { if (e instanceof social.SocialError || e instanceof account.AccountError) return send(res, e.code, { error: e.message }); throw e; }
   return send(res, 404, { error: 'Not found' });
 }
 const provider = require('./provider.js').create({ db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a), limits });
@@ -328,7 +367,7 @@ async function gamesLaunch(req, res) {
   const u = authed(req, res); if (!u) return;
   const b = (await readJson(req)) || {};
   if (!b.gameId || String(b.gameId).length > 100) return send(res, 400, { error: 'Pick a game.' });
-  if (!siteOk(u.roblox_id)) return send(res, 403, { error: security.isBanned(u.roblox_id) ? BANNED : SITE_CLOSED, siteWaitlist: true });
+  if (!siteOk(u.roblox_id)) return send(res, 403, { error: security.isBanned(u.roblox_id) ? bannedMsg(u.roblox_id) : SITE_CLOSED, siteWaitlist: true });
   if (!waitlist.hasAccess(u.roblox_id)) return send(res, 403, { error: 'Slots are invite-only for now. Join the waitlist or enter an access code.', waitlist: true });
   try { return send(res, 200, await provider.launch(u.roblox_id, u.username, b.gameId, !!b.mobile)); }
   catch (e) {
@@ -366,7 +405,7 @@ async function itemsRoute(req, res, p) {
     if (p === '/api/flips/create') return await run(res, () => items.flipCreate(id, name, b.uids, b.side));
     if (p === '/api/flips/join') return await run(res, () => items.flipJoin(id, name, b.id, b.uids));
     if (p === '/api/items/sell-quote') return await run(res, () => items.sellQuote(id, b.uids));
-    if ((p === '/api/items/sell' || p === '/api/items/list') && !siteOk(id)) return send(res, 403, { error: security.isBanned(id) ? BANNED : SITE_CLOSED, siteWaitlist: true });
+    if ((p === '/api/items/sell' || p === '/api/items/list') && !siteOk(id)) return send(res, 403, { error: security.isBanned(id) ? bannedMsg(id) : SITE_CLOSED, siteWaitlist: true });
     if (p === '/api/items/sell') return await run(res, () => { const u = q.user.get(id); if (!u || u.tos_version !== LEGAL.tos) throw new bridge.BridgeError('Please accept the Terms of Service and License Agreement first.', 403); return items.sellToHouse(id, b.uids); });
     if (p === '/api/items/list') return await run(res, () => items.list(id, b.uid, b.price));
     if (p === '/api/items/unlist') return await run(res, () => items.unlist(id, b.id));
@@ -460,11 +499,13 @@ function send(res, code, body) {
   res.end(JSON.stringify(body));
 }
 function log(...a) { console.log(new Date().toISOString(), ...a); }
-function readRaw(req) {
+function readRaw(req, max = CFG.maxBody) {
+  // Too large: stop keeping the bytes, drain a little so the 413 reaches the sender, and only cut the
+  // connection if it goes on far past the limit.
   return new Promise((resolve, reject) => {
-    const chunks = []; let size = 0;
-    req.on('data', c => { size += c.length; if (size > CFG.maxBody) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
+    const chunks = []; let size = 0, big = false;
+    req.on('data', c => { size += c.length; if (size > max) { big = true; chunks.length = 0; if (size > max * 2 + 65536) { reject(new Error('too large')); req.destroy(); } } else chunks.push(c); });
+    req.on('end', () => (big ? reject(new Error('too large')) : resolve(Buffer.concat(chunks))));
     req.on('error', reject);
   });
 }
@@ -503,6 +544,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/auth/verify') return await authVerify(req, res);
     if (req.method === 'POST' && p === '/api/auth/logout') return logout(req, res);
     if (req.method === 'GET' && p === '/api/me') return me(req, res);
+    if (req.method === 'GET' && p === '/api/account') { const u = authed(req, res); if (!u) return; return send(res, 200, account.forPlayer(await account.snapshot(u.roblox_id))); }
     if (req.method === 'GET' && p === '/api/referrals') { const u = authed(req, res); if (!u) return; return send(res, 200, referrals.view(u.roblox_id)); }
     if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true, storage: CFG.db.startsWith('/data') || (process.env.RAILWAY_VOLUME_MOUNT_PATH && CFG.db.startsWith(process.env.RAILWAY_VOLUME_MOUNT_PATH)) ? 'volume' : 'local', offlineTransfers: bridge.enabled(), studioGames: provider.enabled() });
     if (req.method === 'GET' && p === '/api/game/wallet') return await gameWallet(req, res);

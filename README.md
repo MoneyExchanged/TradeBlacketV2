@@ -63,6 +63,17 @@ against a fake data store.
 
 The whole site is invite-only while `SITE_WAITLIST` is on (the default). Players sign in with Roblox first, then see a waitlist screen instead of the site: they join, keep the place they joined in (#1 is first in), and get in when an admin lets the next players in or with a site access code. The server enforces this too: deposits, games, cases, selling and listing are refused for players without access. Withdrawals always work, so nobody's Rodux or items are ever stuck. Admins always have access and get an Admin page (Account → Admin) with Site and Slots tabs. Site codes and Slots codes are separate. Set `SITE_WAITLIST=off` to open the site to everyone.
 
+## Support and account standing
+
+`account.js` and the support part of `social.js`.
+
+- **tradeblacket.com/support** is a help desk. A new ticket carries the player's whole account: the public Roblox profile (name, account age, verified, banned on Roblox), the Trade Empire save (Rodux, value, RAP, items, trades, play time, TradePlus) with the game's Account Standing worked out from `Data.violations` using the same rules as `AccountStandingRules`, and the TradeBlacket record (balance, transfers, bans, staff actions). Staff also see linked accounts (same network, device or hardware).
+- Roblox does not let other sites read a player's Roblox moderation history, so warnings come from the Trade Empire save and from TradeBlacket's own record. The save is only read, never written.
+- Screenshots: PNG, JPEG, GIF or WebP, checked by their first bytes, 5 MB each, 4 per message, 40 a day. They are stored in `uploads/` next to the database (on the volume) and served only to the sender, the ticket's owner and staff. Unused uploads are deleted after a day.
+- Categories include appeals and player reports. Staff can reply, write internal notes (hidden from the player), refresh the account in the ticket, close and reopen.
+- Staff actions (from a ticket or Admin, then Players): warn, suspend for 1 to 90 days, kick (sign out everywhere), ban, terminate, unban, let in, remove access, note. The player sees every action except notes, in the ticket and on their standing. Banned, suspended and terminated players can still sign in to withdraw and to use Support.
+- **tradeblacket.com/tradeempire** shows the player their own Trade Empire account: standing bar and violation history, value over time, stats and their most valuable limiteds.
+
 ## One account per player
 
 `security.js`. Every sign-in records one-way HMAC hashes (keyed with the server secret) of the network address (IPv6 by /64), a device id the browser keeps (cookie `tb_dev` and localStorage) and a hash of the device's hardware and browser traits, sent in the `X-TB-Device` header. Raw addresses and traits are never stored.

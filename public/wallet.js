@@ -25,7 +25,7 @@ async function syncMe(){
   if(!WAPI.live)return null;
   try{
     const r=await fetch('/api/me',{credentials:'same-origin',cache:'no-store'});
-    if(!r.ok){WAPI.me=null;return null}
+    if(!r.ok){WAPI.me=null;if(r.status===401&&S.user&&WAPI.live){S.user=null;save();drawWho();toast('You were signed out. Sign in again to continue.')}return null}
     const me=await r.json();WAPI.me=me;
     // Credit or debit the play balance once per confirmed transfer, keyed by its reference.
     S.seenRefs=S.seenRefs||[];const seen=new Set(S.seenRefs);
