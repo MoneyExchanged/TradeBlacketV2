@@ -225,7 +225,7 @@ function me(req, res) {
     deposited: u.deposited, withdrawn: u.withdrawn, withdrawable: withdrawable(u),
     legal: { tos: u.tos_version === LEGAL.tos, cds: u.cds_version === LEGAL.cds, versions: LEGAL },
     limits: limits.status(u.roblox_id), itemValue: items.siteItemValue(u.roblox_id),
-    studio: provider.recent(u.roblox_id),
+    studio: provider.recent(u.roblox_id), slots: waitlist.status(u.roblox_id),
     // in-game transfers and website (offline) transfers together, newest first
     transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id))
       .sort((a, b) => b.created_at - a.created_at).slice(0, 25),
@@ -253,11 +253,27 @@ const bridge = require('./gamebridge.js').create({
 const items = require('./items.js').create({ db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a) });
 const limits = require('./limits.js').create({ db, tx });
 // Studio games (LuckyStreak) on the Rodux balance, through a signed seamless wallet. Off until configured.
+const waitlist = require('./waitlist.js').create({ db, tx });
+async function waitlistRoute(req, res, p) {
+  if (req.method === 'GET' && p === '/api/waitlist') { const s = sessionUser(req); return send(res, 200, waitlist.status(s && s.user ? s.user.roblox_id : null)); }
+  const u = authed(req, res); if (!u) return;
+  const b = (await readJson(req)) || {};
+  try {
+    if (req.method === 'POST' && p === '/api/waitlist/join') return send(res, 200, waitlist.join(u.roblox_id));
+    if (req.method === 'POST' && p === '/api/waitlist/redeem') return send(res, 200, waitlist.redeem(u.roblox_id, b.code));
+    if (req.method === 'GET' && p === '/api/admin/waitlist') return send(res, 200, waitlist.adminView(u.roblox_id));
+    if (req.method === 'POST' && p === '/api/admin/codes') return send(res, 200, waitlist.makeCodes(u.roblox_id, b.count, b.uses, b.note));
+    if (req.method === 'POST' && p === '/api/admin/grant') return send(res, 200, waitlist.grantNext(u.roblox_id, b.count));
+    if (req.method === 'POST' && p === '/api/admin/revoke') return send(res, 200, waitlist.revoke(u.roblox_id, b.robloxId));
+  } catch (e) { if (e instanceof waitlist.WaitError) return send(res, e.code, { error: e.message }); throw e; }
+  return send(res, 404, { error: 'Not found' });
+}
 const provider = require('./provider.js').create({ db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a), limits });
 async function gamesLaunch(req, res) {
   const u = authed(req, res); if (!u) return;
   const b = (await readJson(req)) || {};
   if (!b.gameId || String(b.gameId).length > 100) return send(res, 400, { error: 'Pick a game.' });
+  if (!waitlist.hasAccess(u.roblox_id)) return send(res, 403, { error: 'Slots are invite-only for now. Join the waitlist or enter an access code.', waitlist: true });
   try { return send(res, 200, await provider.launch(u.roblox_id, u.username, b.gameId, !!b.mobile)); }
   catch (e) {
     if (e instanceof provider.WalletError) return send(res, e.http >= 400 ? e.http : 403, { error: e.message, limit: e.walletCode === 'PLAYER_LIMIT' });
@@ -405,6 +421,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && p === '/api/games') { try { return send(res, 200, await provider.games()); } catch (e) { log('games', e.message); return send(res, 200, { enabled: true, games: [], error: 'Games are loading. Try again shortly.' }); } }
     if (req.method === 'POST' && p === '/api/games/launch') return await gamesLaunch(req, res);
+    if (p === '/api/waitlist' || p.startsWith('/api/waitlist/') || p.startsWith('/api/admin/')) return await waitlistRoute(req, res, p);
     if (req.method === 'POST' && p === '/api/auth/start') return await authStart(req, res);
     if (req.method === 'POST' && p === '/api/auth/verify') return await authVerify(req, res);
     if (req.method === 'POST' && p === '/api/auth/logout') return logout(req, res);

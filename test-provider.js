@@ -42,6 +42,8 @@ let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
   ok('lists studio games from LuckyStreak');
   r = await site('/api/games/launch', { gameId: 'g1' }); assert.equal(r.status, 403); ok('games need the Terms accepted first');
   const v = (await site('/api/me')).body.legal.versions; await site('/api/legal/accept', { doc: 'tos', version: v.tos });
+  r = await site('/api/games/launch', { gameId: 'g1' }); assert.equal(r.status, 403); assert.equal(r.body.waitlist, true);
+  db.prepare("INSERT INTO slot_access (roblox_id, via, granted_at) VALUES (7, 'code', 0)").run();
   r = await site('/api/games/launch', { gameId: 'g1' }); assert.equal(r.status, 200); assert.equal(r.body.url, 'https://play.ls.example/g1?t=1');
   const session = launched.sessionToken; assert.ok(session && launched.currency === 'RDX' && launched.playerId === '7');
   ok('launches a game with a fresh player session, signed with Hawk');

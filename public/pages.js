@@ -27,23 +27,28 @@ const gameCard=k=>`<button class="gcard" data-go="${k}" style="background:${GAME
 
 /* ---------- sign-up gate ---------- */
 const WORDS2=['amber','harbor','otter','quiet','copper','lantern','maple','orbit','velvet','cobalt','meadow','tundra','pixel','summit','ember','willow','fable','granite'];
+const stepper=n=>`<ol class="gsteps" aria-label="Step ${n} of 3">${['Username','Profile phrase','Verify'].map((t,i)=>`<li class="${i+1<n?'done':i+1===n?'on':''}"><i>${i+1<n?ic('check',11,3):i+1}</i>${t}</li>`).join('')}</ol>`;
 function showGate(mode='up'){
   const g=$('#gate');let name='',raf=0;
   const logo=`<div class="logo"><svg class="tbmark" width="44" height="41" viewBox="0 0 128 120" aria-hidden="true"><defs><linearGradient id="tbgg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34E584"/><stop offset="1" stop-color="#0FA552"/></linearGradient><linearGradient id="tbcg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14261E"/><stop offset="1" stop-color="#0A1611"/></linearGradient></defs><g stroke="#1FCB6B" stroke-width="3" fill="url(#tbcg)"><g transform="rotate(-16 34 46)"><rect x="17" y="12" width="34" height="48" rx="6"/></g><g transform="rotate(16 94 46)"><rect x="77" y="12" width="34" height="48" rx="6"/></g><rect x="46" y="4" width="36" height="52" rx="6"/></g><g fill="#1FCB6B"><path transform="translate(26 30) rotate(-16) scale(.62)" d="M10 0C10 0 0 9 0 15a5.5 5.5 0 0 0 9 4l-2 7h6l-2-7a5.5 5.5 0 0 0 9-4C20 9 10 0 10 0z"/><path transform="translate(55 22) scale(.9)" d="M10 19S0 12.5 0 6a5.5 5.5 0 0 1 10-3 5.5 5.5 0 0 1 10 3c0 6.5-10 13-10 13z"/><g transform="translate(86 30) rotate(16) scale(.62)"><circle cx="10" cy="5" r="5"/><circle cx="4" cy="14" r="5"/><circle cx="16" cy="14" r="5"/><path d="M8.5 14h3l1.5 10h-6z"/></g><path transform="translate(50 9) scale(.36)" d="M10 0C10 0 0 9 0 15a5.5 5.5 0 0 0 9 4l-2 7h6l-2-7a5.5 5.5 0 0 0 9-4C20 9 10 0 10 0z"/></g><path d="M26 44h58c13 0 22 8 22 19 0 6-3 11-7 14 6 3 10 9 10 16 0 13-10 23-25 23H26c-11 0-18-7-18-18V62c0-11 7-18 18-18z" fill="url(#tbgg)"/><path d="M26 44h58c13 0 22 8 22 19 0 6-3 11-7 14 6 3 10 9 10 16 0 13-10 23-25 23H26c-11 0-18-7-18-18V62c0-11 7-18 18-18z" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="1.5"/><path d="M26 59h46M49 59v41" stroke="#fff" stroke-width="13" stroke-linecap="round" fill="none"/><circle cx="80" cy="95" r="8.5" fill="none" stroke="#fff" stroke-width="7"/></svg><b style="font-size:23px">Trade<span>Blacket</span></b></div>`;
-  g.innerHTML=`<div class="gate" role="dialog" aria-modal="true" aria-label="Sign up">
-    <div class="gate-l"><canvas id="gcv"></canvas>${logo}
-      <div><h1>Cases, battles and casino games for Trade Empire players.</h1><p>Open cases, battle other players, trade stocks, call predictions and play 15 casino games with your Rodux.</p>
-      <div class="gate-feats">
-        <div>${ic('cases',18,2)}<span><b>8 cases, 32 items</b>Every drop table shown up front</span></div>
-        <div>${ic('battles',18,2)}<span><b>Case battles</b>1v1 up to 2v2, three modes</span></div>
-        <div>${ic('predictions',18,2)}<span><b>Predictions</b>Football, crypto and community markets</span></div>
-        <div>${ic('stocks',18,2)}<span><b>Stocks</b>Eight companies, live prices and news</span></div>
-      </div></div>
-      <div class="gate-items">${['mcrown','gwings','apup','ihalo'].map(id=>itemCard(id)).join('')}</div>
+  const showcase=['ecrown','rwings','ihalo','dtrophy'].map(id=>{const i=ITEM[id];return`<figure class="gx-item">${itemSvg(id)}<figcaption><b>${esc(i.n)}</b><span>${chip(11)}${fmt0(i.v)}</span></figcaption></figure>`}).join('');
+  let code='';
+  g.innerHTML=`<div class="gate" role="dialog" aria-modal="true" aria-label="Sign in to TradeBlacket">
+    <div class="gate-l"><canvas id="gcv"></canvas>
+      <div class="gx-top">${logo}<span class="gx-age">18+</span></div>
+      <div class="gx-hero"><h1>Play with your Trade Empire Rodux.</h1>
+        <p>Cases, battles, limited flips and casino games. Move Rodux and limiteds from your save in seconds, and take them back whenever you like.</p>
+        <ul class="gx-feats">
+          <li>${ic('cases',18,2)}<span><b>Every drop table shown</b>Odds on every case, before you open it</span></li>
+          <li>${ic('shield',18,2)}<span><b>Provably fair flips</b>Seeds you can check after every result</span></li>
+          <li>${ic('tag',18,2)}<span><b>Straight from your save</b>No need to open the game to deposit</span></li>
+          <li>${ic('lock',18,2)}<span><b>Limits you control</b>Screen time, deposit caps and breaks</span></li>
+        </ul></div>
+      <div class="gx-items">${showcase}</div>
     </div>
     <div class="gate-r"><div class="gate-card">
       <div class="gate-mlogo">${logo}</div>
-      <div class="gtabs"><button data-gt="up">Create account</button><button data-gt="in">Sign in</button></div>
+      <div class="lx-seg gseg" id="gseg"><button data-gt="up">Create account</button><button data-gt="in">Sign in</button><i></i></div>
       <div id="gbody"></div>
       <p class="guest">Just looking? <button id="guest">Browse without an account</button></p>
     </div></div>
@@ -58,24 +63,26 @@ function showGate(mode='up'){
     const pts=[];let v=.6;for(let i=0;i<80;i++){v+=(rnd()-.48)*.03;v=Math.min(.8,Math.max(.4,v));pts.push(v)}
     let off=0;
     const f=()=>{if(!g.innerHTML)return;raf=requestAnimationFrame(f);if(cv.offsetWidth!==W)size();ctx.clearRect(0,0,W,H);
-      ctx.strokeStyle='rgba(120,150,190,.07)';for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x+.5,0);ctx.lineTo(x+.5,H);ctx.stroke()}for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y+.5);ctx.lineTo(W,y+.5);ctx.stroke()}
+      ctx.strokeStyle='rgba(255,255,255,.035)';for(let x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x+.5,0);ctx.lineTo(x+.5,H);ctx.stroke()}for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y+.5);ctx.lineTo(W,y+.5);ctx.stroke()}
       const sg=W/70;off+=REDUCED?0:.4;if(off>sg){off-=sg;pts.shift();let n=pts[pts.length-1]+(rnd()-.47)*.03;pts.push(Math.min(.82,Math.max(.38,n)))}
       ctx.beginPath();pts.forEach((p,i)=>{const x=i*sg-off,y=(1-p)*H;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});
-      ctx.strokeStyle='rgba(31,203,107,.85)';ctx.lineWidth=2;ctx.stroke();ctx.lineTo(W+sg,H);ctx.lineTo(0,H);ctx.closePath();const gr=ctx.createLinearGradient(0,H*.2,0,H);gr.addColorStop(0,'rgba(31,203,107,.14)');gr.addColorStop(1,'rgba(31,203,107,0)');ctx.fillStyle=gr;ctx.fill()};
+      ctx.strokeStyle='rgba(231,199,127,.9)';ctx.lineWidth=1.6;ctx.stroke();ctx.lineTo(W+sg,H);ctx.lineTo(0,H);ctx.closePath();const gr=ctx.createLinearGradient(0,H*.2,0,H);gr.addColorStop(0,'rgba(231,199,127,.12)');gr.addColorStop(1,'rgba(231,199,127,0)');ctx.fillStyle=gr;ctx.fill()};
     f();
   })();
   const body=()=>$('#gbody',g);
   function s1(){
-    $$('[data-gt]',g).forEach(b=>b.classList.toggle('on',b.dataset.gt===mode));
-    body().innerHTML=`<h2>${mode==='up'?'Create your account':'Welcome back'}</h2><p class="muted" style="margin:0 0 18px">${mode==='up'?'Sign up with your Roblox username. There is no password: we verify you with a short phrase in your Roblox profile.':'Sign in with your Roblox username and a fresh bio phrase.'}</p>
-    <form id="gf" class="mstack"><label class="fld"><span>Roblox username</span><input class="txt" id="un" autocomplete="username" maxlength="20" value="${esc(name)}" placeholder="e.g. TradeKing"></label>
-    ${mode==='up'?`<label class="check"><input type="checkbox" id="age"> I am 18 or older</label><label class="check"><input type="checkbox" id="rules"> I agree to the <button type="button" class="lnk" data-legal="tos">Terms of Service</button> and the <button type="button" class="lnk" data-legal="license">License Agreement</button></label>`:''}
+    $$('[data-gt]',g).forEach(b=>b.classList.toggle('on',b.dataset.gt===mode));$('#gseg',g).classList.toggle('r',mode==='in');
+    body().innerHTML=`${stepper(1)}<h2>${mode==='up'?'Create your account':'Welcome back'}</h2><p class="muted gsub">${mode==='up'?'Sign up with your Roblox username. There is no password: you prove the account is yours with a short phrase in your Roblox profile.':'Sign in with your Roblox username and a fresh profile phrase.'}</p>
+    <form id="gf" class="mstack"><label class="fld"><span>Roblox username</span><span class="gin">${ic('profile',17)}<input class="txt" id="un" autocomplete="username" maxlength="20" value="${esc(name)}" placeholder="e.g. TradeKing"></span></label>
+    ${mode==='up'?`<details class="gcode"${code?' open':''}><summary>Have an access code?</summary><span class="gin">${ic('lock',16)}<input class="txt" id="gcd" maxlength="16" placeholder="TB-XXXXX-XXXXX" value="${esc(code)}" autocomplete="off" spellcheck="false"></span><small>Codes open slots straight away. You can also add one later.</small></details>`:''}
+    ${mode==='up'?`<label class="check"><input type="checkbox" id="age"><span>I am 18 or older</span></label><label class="check"><input type="checkbox" id="rules"><span>I agree to the <button type="button" class="lnk" data-legal="tos">Terms of Service</button> and the <button type="button" class="lnk" data-legal="license">License Agreement</button></span></label>`:''}
     <div class="err" id="er"></div><button class="cta">Continue</button></form>`;
     const un=$('#un',g);un.focus();
     $('#gf',g).onsubmit=e=>{e.preventDefault();const v=un.value.trim(),er=$('#er',g);
       if(!/^[A-Za-z0-9_]{3,20}$/.test(v)){er.textContent='Roblox usernames are 3 to 20 letters, numbers or underscores.';return}
       if(mode==='up'&&!$('#age',g).checked){er.textContent='You need to be 18 or older to sign up.';return}
       if(mode==='up'&&!$('#rules',g).checked){er.textContent='Please agree to the Terms of Service and License Agreement to continue.';return}
+      if($('#gcd',g))code=$('#gcd',g).value.trim();
       name=v;s2()};
   }
   let tok=null;
@@ -89,7 +96,7 @@ function showGate(mode='up'){
         phrase=j.phrase;tok=j.token;name=j.username}
       catch{s1();$('#er',g).textContent='Could not reach TradeBlacket. Try again.';return}
     }
-    body().innerHTML=`<div class="steps"><i class="on"></i><i class="on"></i><i></i></div><h2>Add this to your bio</h2><p class="muted" style="margin:0 0 16px">This proves you own <b style="color:var(--fg)">${esc(name)}</b>.</p>
+    body().innerHTML=`${stepper(2)}<h2>Add this to your bio</h2><p class="muted" style="margin:0 0 16px">This proves you own <b style="color:var(--fg)">${esc(name)}</b>.</p>
     <div class="phrase"><code id="ph">${esc(phrase)}</code><button type="button" id="cp">Copy</button></div>
     <ol class="how"><li>Open your Roblox profile and choose Edit next to About.</li><li>Paste the phrase anywhere in the About text and save.</li><li>Come back and press Verify. You can remove the phrase afterwards.</li></ol>
     <div class="mstack"><button class="cta" id="vf">Verify</button><button class="cta ghost" id="bk">Back</button></div>
@@ -98,7 +105,7 @@ function showGate(mode='up'){
     $('#bk',g).onclick=s1;$('#vf',g).onclick=s3;
   }
   async function s3(){
-    body().innerHTML=`<div class="center"><div class="spin"></div><h2>Checking ${esc(name)}</h2><p class="muted">Looking for your phrase in the About section…</p></div>`;
+    body().innerHTML=`${stepper(3)}<div class="center"><div class="spin"></div><h2>Checking ${esc(name)}</h2><p class="muted">Looking for your phrase in the About section…</p></div>`;
     if(tok){
       let j={};try{const r=await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mode==='up'?{token:tok,acceptTos:LEGAL_V.tos}:{token:tok})});j=await r.json();if(!r.ok)throw 0}
       catch{if(!g.innerHTML)return;const msg=j.error||'Could not reach TradeBlacket. Try again.';if(/expired/i.test(msg)){s1();$('#er',g).textContent=msg;return}
@@ -109,6 +116,7 @@ function showGate(mode='up'){
     if(!g.innerHTML)return;
     const fresh=mode==='up';
     S.user={name};S.guest=false;if(fresh){S.stats.joined=Date.now();bonus(500);S.legal={...(S.legal||{}),tos:LEGAL_V.tos}}save();drawWho();
+    if(code&&typeof wlRedeem==='function')wlRedeem(code);
     body().innerHTML=`<div class="center"><div class="ok">${ic('check',30,2.4)}</div><h2>${fresh?'Account created':'Signed in'}</h2><p class="muted" style="margin:0 0 20px">${fresh?'You got a 500 Rodux welcome bonus to start with.':`Welcome back, ${esc(name)}.`}</p><button class="cta" id="enter">Enter TradeBlacket</button></div>`;
     $('#enter',g).onclick=()=>{close();go('home');if(fresh){confetti(innerWidth/2,innerHeight/3,110);addChat({sys:1,u:{name:'TradeBlacket'},text:`Welcome ${name}! Say hi in chat.`})}};
   }

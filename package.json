@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --env-file=.env server.js",
-    "test": "node test.js && node test-bridge.js && node test-items.js && node test-provider.js",
+    "test": "node test.js && node test-bridge.js && node test-items.js && node test-provider.js && node test-waitlist.js",
     "test:bridge": "node test-bridge.js",
     "test:items": "node test-items.js",
     "test:provider": "node test-provider.js"

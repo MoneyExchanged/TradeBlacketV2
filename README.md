@@ -59,6 +59,10 @@ against a fake data store.
 - **Lobby and launch:** `GET /api/games` lists games (cached 10 minutes); `POST /api/games/launch` creates a single-use player session and asks LuckyStreak for the game link, which opens full screen.
 - **When LuckyStreak's API document arrives:** match their field names in `FIELDS` and the answer shape in `reply()` in `provider.js`, and set the launch and games paths. Then give LuckyStreak the wallet URL `https://<your domain>/api/provider/luckystreak/` and run `npm run test:provider`.
 
+## Slots waitlist
+
+Slots are closed for now (`waitlist.js`). Players join a waitlist and keep the place they joined in; the first to join is #1. They get in when an admin lets the next players in, or straight away with an access code (`TB-XXXXX-XXXXX`). Admins are the Roblox accounts in `ADMIN_ROBLOX_IDS` (default: the owner, 496295513); an admin sees an Admin section on the Slots page to make codes, let players in and remove access. Studio games can only be launched by players with access.
+
 ## Going live
 
 1. **Host it over https.** Roblox only calls https addresses. Any Node host works (Railway, Fly.io, Render, a VPS behind Caddy). Keep `tradeblacket.db` on a persistent disk and back it up.
