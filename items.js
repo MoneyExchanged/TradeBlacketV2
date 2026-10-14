@@ -29,7 +29,7 @@ const HOLD_SECONDS = 3 * 24 * 60 * 60;
 const STORES = { save: process.env.ROBLOX_DATASTORE || 'PlayerStore_v1', items: 'ItemStore_v1', market: 'MarketStore_v1', mail: 'ProfileMail_v1' };
 const MAX_PER_MOVE = 20, FLIP_RANGE = [0.9, 1.1], FLIP_MAX_ITEMS = 10, FLIP_EXPIRE_MS = 24 * 36e5;
 
-function create({ db, tx, log, guard }) {
+function create({ db, tx, log, guard, note = () => {} }) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS site_items (
       uid TEXT PRIMARY KEY, item_id INTEGER NOT NULL, serial INTEGER NOT NULL, owner INTEGER NOT NULL,
@@ -391,6 +391,7 @@ function create({ db, tx, log, guard }) {
       if (!r || r.owner !== robloxId || r.status !== 'held') throw new BridgeError('That item is not available to list.');
       q.setStatus.run('market', now(), r.uid); qm.add.run(newId('lst-'), r.uid, robloxId, price, now());
     });
+    note(robloxId, 'list', { uid: String(uid), price });
     return { ok: true };
   }
   function unlist(robloxId, id) {
@@ -398,6 +399,7 @@ function create({ db, tx, log, guard }) {
       const l = qm.one.get(String(id));
       if (!l || l.seller !== robloxId) throw new BridgeError('That listing is not yours.');
       qm.drop.run(l.id); q.setStatus.run('held', now(), l.uid);
+      note(robloxId, 'unlist', { uid: l.uid, price: l.price });
     });
     return { ok: true };
   }
@@ -414,6 +416,7 @@ function create({ db, tx, log, guard }) {
       if (l.seller !== HOUSE) qm.pay.run(l.price, l.price, l.seller);
       qm.drop.run(l.id); q.setOwner.run(robloxId, now(), l.uid);
       q.addMove.run(newId('mv-'), 'buy', robloxId, JSON.stringify([l.uid]), l.price, 'ok', now());
+      if (l.seller !== HOUSE) note(l.seller, 'sold', { uid: l.uid, price: l.price, buyerId: robloxId, buyer: u.username });
     });
     log('market buy', robloxId, id);
     return { ok: true, balance: qm.user.get(robloxId).balance };
@@ -429,7 +432,7 @@ function create({ db, tx, log, guard }) {
     let total = 0; for (const r of q.mine.all(robloxId)) { const c = cat.get(r.item_id); if (c) total += c.value; } return total;
   }
 
-  return { saveInventory, siteInventory, deposit, withdraw, flipCreate, flipJoin, flipCancel, flipList, siteItemValue, sellQuote: async (id, u) => { const r = await sellQuote(id, u); return { value: r.value, payout: r.payout }; }, sellToHouse, list, unlist, buy, marketList, _test: { ownedCopies } };
+  return { describe, saveInventory, siteInventory, deposit, withdraw, flipCreate, flipJoin, flipCancel, flipList, siteItemValue, sellQuote: async (id, u) => { const r = await sellQuote(id, u); return { value: r.value, payout: r.payout }; }, sellToHouse, list, unlist, buy, marketList, _test: { ownedCopies } };
 }
 
 module.exports = { create, STORES, HOLD_SECONDS };

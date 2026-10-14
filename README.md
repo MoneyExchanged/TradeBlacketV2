@@ -74,6 +74,18 @@ The whole site is invite-only while `SITE_WAITLIST` is on (the default). Players
 - Staff actions (from a ticket or Admin, then Players): warn, suspend for 1 to 90 days, kick (sign out everywhere), ban, terminate, unban, let in, remove access, note. The player sees every action except notes, in the ticket and on their standing. Banned, suspended and terminated players can still sign in to withdraw and to use Support.
 - **tradeblacket.com/tradeempire** shows the player their own Trade Empire account: standing bar and violation history, value over time, stats and their most valuable limiteds.
 
+## Player lookup for staff
+
+`playerlog.js`, shown in Admin, then Players. Staff search by Roblox name, Roblox id, wallet ID, ticket id or referral code (an empty search lists recently active players). A player's page has the account, totals and a log of everything they did:
+
+- Rodux deposits and withdrawals with how they were made (website wallet or the old in-game bridge), status, reference and reason when refused
+- Limited deposits, withdrawals, purchases, sales to TradeBlacket and to players, listings, with the exact copies (item, serial, value)
+- Limited Flips (stake, opponent, result), studio game rounds, daily play time and net
+- Sign-ins with network and device labels, the accounts that share them, waitlist steps and access codes, referrals, Terms accepted, profile and limit changes, tickets, staff actions and bans
+- The Trade Empire save's own ledger (sales, earnings, purchases, transfers), lifetime totals and moderation record
+
+What no table kept (sign-ins, sign-outs, listings, profile and limit changes, Terms) is written to the `activity` table from now on. Staff can export the whole log as CSV.
+
 ## One account per player
 
 `security.js`. Every sign-in records one-way HMAC hashes (keyed with the server secret) of the network address (IPv6 by /64), a device id the browser keeps (cookie `tb_dev` and localStorage) and a hash of the device's hardware and browser traits, sent in the `X-TB-Device` header. Raw addresses and traits are never stored.

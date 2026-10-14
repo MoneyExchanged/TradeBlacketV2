@@ -164,7 +164,9 @@ function create({ db, tx, secret, isAdmin, log = () => {} }) {
     return [...by.values()].sort((a, b) => b.lastAt - a.lastAt).slice(0, 50);
   }
   const seenCounts = id => Object.fromEntries(q.counts.all(id).map(r => [r.kind, r.n]));
-  return { ip, device, limit, onSignIn, touch, shared, isBanned, banInfo, ban, adminBan, adminUnban, adminList, linked, seenCounts, SecError };
+  // Short labels for staff (N-xxxxxx network, D-xxxxxx device), the same ones the player log shows.
+  function labels(req) { const o = {}; for (const [k, hash] of marks(req)) o[{ ip: 'net', dev: 'dev', hw: 'hw' }[k]] = ({ ip: 'N-', dev: 'D-', hw: 'H-' }[k]) + hash.slice(0, 6).toUpperCase(); return o; }
+  return { labels, ip, device, limit, onSignIn, touch, shared, isBanned, banInfo, ban, adminBan, adminUnban, adminList, linked, seenCounts, SecError };
 }
 
 module.exports = { create, SecError };

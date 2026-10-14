@@ -50,22 +50,22 @@ function acctCard(a,{staff=false,compact=false}={}){
   const R=a.roblox||{},T=a.tradeEmpire||{},B=a.tradeBlacket||{},ts=T.standing,bs=B.standing;
   const rbx=R.error?`<p class="note">${esc(R.error)}</p>`:R.exists===false?`<p class="note">This Roblox account no longer exists.</p>`:
     `<div class="ac-id"><img src="/img/avatar/${a.robloxId}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ac-ph',textContent:'${esc((R.name||'?')[0])}'}))"><div><b>${esc(R.displayName||R.name||'')}</b><span>@${esc(R.name||'')}${R.verified?' <i class="ac-ver" title="Verified">✓</i>':''}</span></div>
-      <span class="ac-pill ${R.isBanned?'bad':'ok'}">${R.isBanned?'Banned on Roblox':'Roblox account active'}</span></div>
+      <span class="ac-pill ${R.isBanned?'is-bad':'is-ok'}">${R.isBanned?'Banned on Roblox':'Roblox account active'}</span></div>
      <dl class="ac-kv"><div><dt>Roblox id</dt><dd>${a.robloxId}</dd></div><div><dt>Account age</dt><dd>${ageOf(R.created)}</dd></div><div><dt>Created</dt><dd>${dt(R.created)}</dd></div></dl>`;
   const te=!T.available?`<p class="note">${esc(T.error||'Trade Empire saves cannot be read right now.')}</p>`:!T.hasSave?`<p class="note">No Trade Empire save. This player has not played yet.</p>`:
     `${standBar(ts)}<p class="ac-msg">${esc(ts.message)}</p>${standCounts(ts)}
      <dl class="ac-kv"><div><dt>Rodux</dt><dd>${fmt0(T.rodux)}</dd></div><div><dt>Value</dt><dd>${fmt0(T.totalValue)}</dd></div><div><dt>RAP</dt><dd>${fmt0(T.totalRAP)}</dd></div><div><dt>Items</dt><dd>${fmt0(T.items)}</dd></div><div><dt>Trades</dt><dd>${fmt0(T.trades)}</dd></div><div><dt>Played</dt><dd>${hrs(T.playSeconds)}</dd></div><div><dt>TradePlus</dt><dd>${T.tradePlus?esc(T.tradePlus.tier):'None'}</dd></div><div><dt>In game</dt><dd>${T.inGame?'Yes':'No'}</dd></div></dl>
      ${compact?'':`<details class="ac-more"${ts.violations.length&&staff?' open':''}><summary>Violation history (${ts.violations.length})</summary>${violList(ts.violations,{empty:'No violations in Trade Empire.'})}</details>`}`;
-  const ban=B.banned?`<span class="ac-pill bad">${B.banned.kind==='suspend'?`Suspended until ${dtt(B.banned.until)}`:B.banned.kind==='terminate'?'Terminated':'Banned'}</span>`:B.access?'<span class="ac-pill ok">Has access</span>':'<span class="ac-pill">On the waitlist</span>';
+  const ban=B.banned?`<span class="ac-pill is-bad">${B.banned.kind==='suspend'?`Suspended until ${dtt(B.banned.until)}`:B.banned.kind==='terminate'?'Terminated':'Banned'}</span>`:B.access?'<span class="ac-pill is-ok">Has access</span>':'<span class="ac-pill">On the waitlist</span>';
   const tb=!B.walletId?'<p class="note">No TradeBlacket account.</p>':
-    `<div class="ac-row">${ban}${B.admin?'<span class="ac-pill gold">Admin</span>':''}</div>
+    `<div class="ac-row">${ban}${B.admin?'<span class="ac-pill is-gold">Admin</span>':''}</div>
      ${B.banned?`<p class="ac-msg">${esc(B.banned.reason)}${B.banned.automatic?' (automatic)':''}</p>`:''}
      ${standBar(bs)}${standCounts(bs)}
      <dl class="ac-kv"><div><dt>Wallet ID</dt><dd><code>${esc(B.walletId)}</code></dd></div><div><dt>Joined</dt><dd>${dt(B.joined)}</dd></div><div><dt>Balance</dt><dd>${fmt0(B.balance)}</dd></div><div><dt>Bonus</dt><dd>${fmt0(B.bonusLock)}</dd></div><div><dt>Deposited</dt><dd>${fmt0(B.deposited)}</dd></div><div><dt>Withdrawn</dt><dd>${fmt0(B.withdrawn)}</dd></div><div><dt>Site items</dt><dd>${fmt0(B.itemValue)}</dd></div><div><dt>Referrals</dt><dd>${fmt0(B.referrals?B.referrals.paid:0)} of ${fmt0(B.referrals?B.referrals.invited:0)}</dd></div></dl>
      ${compact?'':`<details class="ac-more"><summary>Staff actions (${(B.actions||[]).length})</summary>${(B.actions||[]).length?`<ul class="al">${B.actions.map(x=>`<li><span class="vk ${esc(x.action)}">${esc(x.action)}</span><div><b>${esc(x.reason||x.note||'')}</b>${staff&&x.note&&x.reason?`<p>${esc(x.note)}</p>`:''}<small>${dtt(x.at)}${staff?`, by ${esc(x.by)}`:''}${x.until?`, until ${dtt(x.until)}`:''}</small></div></li>`).join('')}</ul>`:'<p class="note">None.</p>'}</details>`}`;
   const st=staff&&B.walletId?`<section class="ac-s staff"><h4>Staff only</h4>
      <dl class="ac-kv"><div><dt>Signed in on</dt><dd>${fmt0(B.sessions||0)} device${B.sessions===1?'':'s'}</dd></div><div><dt>Networks</dt><dd>${fmt0((B.seen||{}).ip||0)}</dd></div><div><dt>Devices</dt><dd>${fmt0((B.seen||{}).dev||0)}</dd></div><div><dt>Tickets</dt><dd>${fmt0(B.tickets||0)}</dd></div></dl>
-     <h5>Linked accounts</h5>${(B.linked||[]).length?`<ul class="lk">${B.linked.map(l=>`<li><button class="lk-n" data-staffacct="${l.robloxId}">${esc(l.username||String(l.robloxId))}</button><span>${l.via.map(v=>({ip:'same network',dev:'same device',hw:'same hardware'}[v]||v)).join(', ')}</span>${l.banned?'<span class="ac-pill bad">Banned</span>':''}</li>`).join('')}</ul>`:'<p class="note">No other accounts share a network, device or hardware.</p>'}
+     <h5>Linked accounts</h5>${(B.linked||[]).length?`<ul class="lk">${B.linked.map(l=>`<li><button class="lk-n" data-staffacct="${l.robloxId}">${esc(l.username||String(l.robloxId))}</button><span>${l.via.map(v=>({ip:'same network',dev:'same device',hw:'same hardware'}[v]||v)).join(', ')}</span>${l.banned?'<span class="ac-pill is-bad">Banned</span>':''}</li>`).join('')}</ul>`:'<p class="note">No other accounts share a network, device or hardware.</p>'}
      ${B.referrals&&B.referrals.referredBy?`<p class="note">Referred by ${esc(B.referrals.referredBy)}</p>`:''}</section>`:'';
   return`<div class="ac${compact?' compact':''}">
     <section class="ac-s"><h4>Roblox</h4>${rbx}</section>
@@ -274,7 +274,7 @@ PAGES.tradeempire=async el=>{
   box.innerHTML=`
     <section class="te-hero">
       <div class="te-id"><img src="${WAPI.live?`/img/avatar/${a.robloxId}`:''}" alt="" onerror="this.style.visibility='hidden'"><div><h3>${esc(R.displayName||S.user.name)}</h3><span>@${esc(R.name||S.user.name)}${R.verified?' <i class="ac-ver" title="Verified">✓</i>':''}</span>
-        <div class="te-tags">${T.tradePlus?`<span class="ac-pill gold">TradePlus ${esc(T.tradePlus.tier)}</span>`:''}${T.inGame?'<span class="ac-pill ok">In game now</span>':''}<span class="ac-pill ${R.isBanned?'bad':''}">${R.isBanned?'Banned on Roblox':`Roblox account, ${ageOf(R.created)} old`}</span></div></div></div>
+        <div class="te-tags">${T.tradePlus?`<span class="ac-pill is-gold">TradePlus ${esc(T.tradePlus.tier)}</span>`:''}${T.inGame?'<span class="ac-pill is-ok">In game now</span>':''}<span class="ac-pill ${R.isBanned?'is-bad':''}">${R.isBanned?'Banned on Roblox':`Roblox account, ${ageOf(R.created)} old`}</span></div></div></div>
       ${T.hasSave?`<div class="te-tiles">${tile('Rodux',fmt0(T.rodux))}${tile('Total value',fmt0(T.totalValue))}${tile('RAP',fmt0(T.totalRAP))}${tile('Limiteds',fmt0(T.items),`${fmt0(T.uniqueItems)} different`)}${tile('Trades',fmt0(T.trades),T.activeTrades?`${T.activeTrades} open`:'')}${tile('Played',hrs(T.playSeconds),T.dailyStreak?`${fmt0(T.dailyStreak)} daily rewards`:'')}</div>`:''}
     </section>
     ${!T.available?`<div class="empty"><h3>Trade Empire can't be read right now</h3><p>${esc(T.error||'Try again later.')}</p></div>`:!T.hasSave?`<div class="empty"><h3>No Trade Empire save yet</h3><p>Play Trade Empire once and your account shows up here.</p></div>`:`
@@ -305,22 +305,7 @@ PAGES.tradeempire=async el=>{
     :`<p class="note">${r.ok?'No limiteds in your save.':esc(r.j.error||'Could not read your limiteds.')}</p>`;
 };
 
-/* ---------- admin: look up a player ---------- */
-async function admPlayer(who){
-  const box=$('#admp');if(!box)return;
-  if(!who){box.innerHTML='';return}
-  box.innerHTML='<div class="spin"></div>';
-  if(!WAPI.live){box.innerHTML='<p class="note">Preview: player lookups run on the live site.</p>';return}
-  const r=await api('/api/admin/account?who='+encodeURIComponent(who));if(!$('#admp'))return;
-  if(!r.ok){box.innerHTML=`<p class="note">${esc(r.j.error)}</p>`;return}
-  box.innerHTML=`<div class="adm-pl">${staffBar(r.j,null)}${acctCard(r.j,{staff:true})}</div>`;
-}
-function admPlayersTab(adm,who){
-  adm.innerHTML=`<div class="sec-h"><h3 class="sec">Look up a player</h3><span class="note">Roblox profile, Trade Empire standing, TradeBlacket record and linked accounts</span></div>
-    <form class="wl-row adm-find" id="admf"><input class="txt" id="admw" placeholder="Roblox username or id" value="${esc(who||'')}"><button class="cta inline">Look up</button></form><div id="admp"></div>`;
-  $('#admf',adm).onsubmit=e=>{e.preventDefault();admPlayer($('#admw',adm).value.trim())};
-  if(who)admPlayer(who);
-}
+/* Admin → Players lives in players.js */
 
 /* ---------- addresses: tradeblacket.com/support and /tradeempire ---------- */
 const PATHS={support:'/support',tradeempire:'/tradeempire',refer:'/refer'};

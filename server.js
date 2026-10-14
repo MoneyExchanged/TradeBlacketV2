@@ -211,6 +211,7 @@ async function authVerify(req, res) {
   tx(() => { q.addUser.run(c.roblox_id, c.username, now()); q.setName.run(c.username, c.roblox_id); if (b.acceptTos === LEGAL.tos) db.prepare('UPDATE users SET tos_version = ? WHERE roblox_id = ?').run(LEGAL.tos, c.roblox_id); });
   // A new account from a network, device or hardware another account already uses is banned here.
   const hit = security.onSignIn(c.roblox_id, req, isNew);
+  plog.add(c.roblox_id, 'signin', { isNew, ...security.labels(req), banned: hit ? hit.kind && `same ${({ ip: 'network', dev: 'device', hw: 'hardware' })[hit.kind]} as another account` : undefined });
   if (isNew && b.ref && !hit) referrals.attach(c.roblox_id, b.ref);
   const token = crypto.randomBytes(32).toString('hex');
   q.addSession.run(token, c.roblox_id, now());
@@ -245,7 +246,7 @@ function me(req, res) {
 }
 function logout(req, res) {
   const s = sessionUser(req);
-  if (s) q.dropSession.run(s.token);
+  if (s) { q.dropSession.run(s.token); plog.add(s.user ? s.user.roblox_id : s.roblox_id, 'signout'); }
   res.setHeader('Set-Cookie', 'tb_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
   return send(res, 200, { ok: true });
 }
@@ -264,7 +265,7 @@ const bridge = require('./gamebridge.js').create({
   db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a),
   siteWithdrawable: robloxId => { const u = q.user.get(robloxId); return u ? withdrawable(u) : 0; }
 });
-const items = require('./items.js').create({ db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a) });
+const items = require('./items.js').create({ db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a), note: (...a) => plog.add(...a) });
 const limits = require('./limits.js').create({ db, tx });
 // Studio games (LuckyStreak) on the Rodux balance, through a signed seamless wallet. Off until configured.
 const waitlist = require('./waitlist.js').create({ db, tx, blocked: id => security.isBanned(id) });
@@ -293,6 +294,13 @@ async function waitlistRoute(req, res, p) {
   const b = (await readJson(req)) || {};
   try {
     if (req.method === 'GET' && p === '/api/admin/bans') return send(res, 200, security.adminList(u.roblox_id));
+    if (req.method === 'GET' && (p === '/api/admin/search' || p === '/api/admin/player')) {
+      if (!waitlist.isAdmin(u.roblox_id)) return send(res, 403, { error: 'Only admins can do that.' });
+      const sp = new URL(req.url, 'http://x').searchParams;
+      if (p === '/api/admin/search') return send(res, 200, { players: plog.search(sp.get('q')) });
+      const r = await plog.player(account.find(sp.get('id')));
+      return r ? send(res, 200, r) : send(res, 404, { error: 'No TradeBlacket account with that name or id.' });
+    }
     if (req.method === 'GET' && p === '/api/admin/account') {
       if (!waitlist.isAdmin(u.roblox_id)) return send(res, 403, { error: 'Only admins can do that.' });
       const who = new URL(req.url, 'http://x').searchParams.get('who');
@@ -325,6 +333,8 @@ const social = require('./social.js').create({
 const account = require('./account.js').create({
   db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), security, siteList, items, GB: GBX, social, referrals, withdrawable,
 });
+// Everything a player has done, for staff.
+const plog = require('./playerlog.js').create({ db, isAdmin: id => waitlist.isAdmin(id), security, items, GB: GBX, social, account });
 async function socialRoute(req, res, p) {
   const s = sessionUser(req), me = s && s.user ? s.user.roblox_id : null;
   try {
@@ -343,13 +353,13 @@ async function socialRoute(req, res, p) {
       return fs.createReadStream(f.path).on('error', () => res.end()).pipe(res);
     }
     const b = req.method === 'POST' ? (await readJson(req)) || {} : {};
-    if (req.method === 'POST' && p === '/api/profile') { if (!siteOk(me)) return send(res, 403, { error: security.isBanned(me) ? bannedMsg(me) : SITE_CLOSED, siteWaitlist: true }); return send(res, 200, await social.updateProfile(me, b)); }
+    if (req.method === 'POST' && p === '/api/profile') { if (!siteOk(me)) return send(res, 403, { error: security.isBanned(me) ? bannedMsg(me) : SITE_CLOSED, siteWaitlist: true }); const r = await social.updateProfile(me, b); plog.add(me, 'profile', { fields: Object.keys(b).slice(0, 10) }); return send(res, 200, r); }
     if (req.method === 'GET' && p === '/api/support') return send(res, 200, social.tickets(me));
     if (req.method === 'POST' && p === '/api/support') {
       try { security.limit(req, 'ticket', 10, 36e5); } catch (e) { return send(res, e.code, { error: e.message }); }
       // the player's whole account goes into the ticket for staff
       let snap = null; try { snap = await account.snapshot(me, { staff: true }); } catch (e) { log('snapshot', e.message); }
-      return send(res, 200, social.openTicket(me, b, snap));
+      const tk = social.openTicket(me, b, snap); plog.add(me, 'ticket', { id: tk.id, category: tk.category }); return send(res, 200, tk);
     }
     let m;
     if (req.method === 'POST' && (m = p.match(/^\/api\/support\/(TKT-[0-9A-F]{8})\/(reply|close|reopen|account)$/))) {
@@ -418,7 +428,7 @@ async function limitsRoute(req, res, p) {
   if (req.method === 'GET' && p === '/api/limits') return send(res, 200, limits.status(u.roblox_id));
   const b = (await readJson(req)) || {};
   if (req.method === 'POST' && p === '/api/limits/heartbeat') return send(res, 200, limits.heartbeat(u.roblox_id, b.seconds, b.net));
-  if (req.method === 'POST' && p === '/api/limits') { try { return send(res, 200, limits.update(u.roblox_id, b)); } catch (e) { return send(res, 400, { error: e.message }); } }
+  if (req.method === 'POST' && p === '/api/limits') { try { const r = limits.update(u.roblox_id, b); plog.add(u.roblox_id, 'limits', { fields: Object.keys(b).slice(0, 10) }); return send(res, 200, r); } catch (e) { return send(res, 400, { error: e.message }); } }
   return send(res, 404, { error: 'Not found' });
 }
 async function legalRoute(req, res) {
@@ -427,7 +437,7 @@ async function legalRoute(req, res) {
   if (b.doc === 'tos' && b.version === LEGAL.tos) db.prepare('UPDATE users SET tos_version = ? WHERE roblox_id = ?').run(LEGAL.tos, u.roblox_id);
   else if (b.doc === 'cds' && b.version === LEGAL.cds) db.prepare('UPDATE users SET cds_version = ? WHERE roblox_id = ?').run(LEGAL.cds, u.roblox_id);
   else return send(res, 400, { error: 'Unknown document or version.' });
-  log('accepted', b.doc, b.version, u.roblox_id);
+  log('accepted', b.doc, b.version, u.roblox_id); plog.add(u.roblox_id, 'legal', { doc: b.doc, version: b.version });
   return send(res, 200, { ok: true });
 }
 const moving = new Set();
