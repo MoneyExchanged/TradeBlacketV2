@@ -95,8 +95,9 @@ function openWallet(tab='deposit',pre=null){
   if(!S.user){openLogin();return}
   if(!['deposit','withdraw','rakeback'].includes(tab))tab='deposit';
   let method=pre,poll=0;
-  const m=modal(`<div class="wtabs" role="tablist">${['deposit','withdraw','rakeback'].map(t=>`<button role="tab" data-wt="${t}">${WI[t]}<span>${t[0].toUpperCase()+t.slice(1)}</span></button>`).join('')}</div><div id="wbody" class="wbody"></div>`,{cls:'wal',onClose:()=>clearInterval(poll)});
+  const m=modal(`<div class="wtabs" role="tablist">${['deposit','withdraw','rakeback'].map(t=>`<button role="tab" data-wt="${t}">${WI[t]}<span>${t[0].toUpperCase()+t.slice(1)}</span></button>`).join('')}</div><div id="wbody" class="wbody"></div>`,{cls:'wal lux',onClose:()=>clearInterval(poll)});
   const R=m.root,B=()=>$('#wbody',R);
+  R.addEventListener('click',e=>{const q=e.target.closest('[data-q]');if(!q)return;const a=$('.amt',R),i=$('#wa',R);if(a&&i){i.value=Math.max(0,Math.floor((+a.dataset.cap||0)*+q.dataset.q));$$('[data-q]',R).forEach(x=>x.classList.toggle('on',x===q))}});
   if(WAPI.live)poll=setInterval(async()=>{if(method!=='te')return;const before=JSON.stringify(WAPI.me&&WAPI.me.transfers);await syncMe();if(JSON.stringify(WAPI.me&&WAPI.me.transfers)!==before){await loadGE(true);if(!($('#wa',R)&&document.activeElement===$('#wa',R)))draw()}},6000);
 
   function draw(){
@@ -107,13 +108,15 @@ function openWallet(tab='deposit',pre=null){
   }
   function picker(){
     const dep=tab==='deposit',iv=WAPI.me?WAPI.me.itemValue:0;
-    B().innerHTML=`<h3 class="wh">Select ${dep?'Payment':'Withdrawal'} Method</h3>
-      <div class="mgrid"><button class="mtile" data-m="te">${TE_MARK(46)}<b>${TE.name}</b><span>Rodux</span></button>
-        <button class="mtile" data-m="ltd"><span class="mhex">${HEX(30)}</span><b>${TE.name}</b><span>Limiteds</span></button></div>
-      <p class="wnote">${dep?`Move Rodux or limiteds from your ${TE.name} save. You don't need to open the game.`:`Rodux and limiteds go back to the ${TE.name} account you signed in with.${iv?` You have ${fmt0(iv)} in limiteds on TradeBlacket.`:''}`}</p>`;
+    const g=GE&&GE.available&&GE.hasSave&&!GE.inGame?GE:null;
+    B().innerHTML=`<div class="lx-head"><span class="lx-eyebrow">${dep?'Deposit':'Withdraw'}</span><h3>${dep?`What are you bringing from ${TE.name}?`:`What goes back to ${TE.name}?`}</h3><p>${dep?'Straight from your save. You never have to open the game.':'Straight into your save, within seconds.'}</p></div>
+      <div class="lx-methods"><button class="lx-method" data-m="te"><img src="te-rodux.webp" alt="${TE.name}"><span class="lx-mcap"><span class="lx-tag">Currency</span><b>Rodux</b><small>${dep?(g?`${chip(12)}${fmt0(g.balance)} in your save`:'Your in-game balance'):`${chip(12)}${fmt0(wState().canBack)} you can withdraw`}</small></span><i class="lx-arrow">${ic('chev',18,2.2)}</i></button>
+        <button class="lx-method l" data-m="ltd"><img src="te-limiteds.webp" alt="${TE.name} Limiteds"><span class="lx-mcap"><span class="lx-tag">Collectibles</span><b>Limiteds</b><small>${dep?'Pick items from your inventory':iv?`${HEX(12)}${fmt0(iv)} on TradeBlacket`:'Items you hold on TradeBlacket'}</small></span><i class="lx-arrow">${ic('chev',18,2.2)}</i></button></div>
+      <p class="wnote lx-fine">${ic('shield',13,2)} Moves are checked against your save before anything changes, and never run while you're in the game.</p>`;
+    if(dep&&WAPI.live&&!GE)loadGE().then(()=>{if(B()&&!method&&tab==='deposit')picker()});
     $$('[data-m]',R).forEach(b=>b.onclick=()=>{if(b.dataset.m==='ltd'){m.close();openInventory(dep?'game':'site');return}method='te';draw()});
   }
-  function head(t){return`<div class="whd"><button class="ib wbk" id="wbk" aria-label="Back">${WI.back}</button>${TE_MARK(30)}<div><b>${TE.name}</b><span>${t}</span></div>${WAPI.live?'<i class="wlive">Connected</i>':''}</div>`}
+  function head(t){return`<div class="whd"><button class="ib wbk" id="wbk" aria-label="Back">${WI.back}</button><img class="whd-img" src="te-rodux.webp" alt=""><div><b>${t}</b><span>${TE.name} · Rodux</span></div>${WAPI.live?'<i class="wlive">Connected</i>':''}</div>`}
   function history(dir){
     const tx=wState().tx.filter(t=>t.dir===dir).slice(0,4);
     if(!tx.length)return'';
@@ -152,7 +155,7 @@ function openWallet(tab='deposit',pre=null){
     if(g.inGame)return outOfGame(dep);
     const cap=dep?g.balance:Math.max(0,Math.min(Math.floor(S.bal-(S.lock||0)),WAPI.me?WAPI.me.withdrawable:0,g.gameWithdrawable));
     return`<div class="wstat"><div><span>In ${TE.name}</span><b>${chip(14)}${fmt0(g.balance)}</b></div><div><span>${dep?'On TradeBlacket':'Can withdraw'}</span><b>${chip(14)}${dep?fmt(S.bal):fmt0(cap)}</b></div></div>
-      <div class="wsim live"><span class="wlbl">${dep?`Deposit from your ${TE.name} save`:`Withdraw to your ${TE.name} save`}</span><div class="amt">${chip(16)}<input id="wa" type="number" min="1" step="1" value="${Math.min(dep?500:cap,cap)}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${cap<1?' disabled':''}>${dep?'Deposit':'Withdraw'}</button></div>
+      <div class="wsim live"><span class="wlbl">${dep?`Deposit from your ${TE.name} save`:`Withdraw to your ${TE.name} save`}</span><div class="amt" data-cap="${cap}">${chip(20)}<input id="wa" type="number" min="1" step="1" value="${Math.min(dep?500:cap,cap)}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="lx-quick"><button type="button" data-q=".1">10%</button><button type="button" data-q=".25">25%</button><button type="button" data-q=".5">50%</button><button type="button" data-q="1">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${cap<1?' disabled':''}>${dep?'Deposit':'Withdraw'}</button></div>
       <p class="wnote">Stay out of ${TE.name} while a transfer runs. It takes a few seconds.</p>`;
   }
   function wireLive(dep){
@@ -165,7 +168,7 @@ function openWallet(tab='deposit',pre=null){
     const w=wState();
     B().innerHTML=`${head('Deposit Rodux')}
       ${WAPI.live?`<div id="gx">${liveBody(true)}</div>`:`<div class="wstat"><div><span>Signed in as</span><b>${esc(S.user.name)}</b></div><div><span>Deposited so far</span><b>${chip(14)}${fmt0(w.deposited)}</b></div></div>
-      <div class="wsim"><span class="wlbl">Preview · ${TE.name} is simulated</span><div class="amt">${chip(16)}<input id="wa" type="number" min="1" step="1" value="${Math.min(500,teState().rodux)}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo">Deposit</button><p class="wnote">${fmt0(teState().rodux)} Rodux left in the simulated ${TE.name} save.</p></div>`}
+      <div class="wsim"><span class="wlbl">Preview · ${TE.name} is simulated</span><div class="amt" data-cap="${Math.floor(teState().rodux)}">${chip(20)}<input id="wa" type="number" min="1" step="1" value="${Math.min(500,teState().rodux)}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="lx-quick"><button type="button" data-q=".1">10%</button><button type="button" data-q=".25">25%</button><button type="button" data-q=".5">50%</button><button type="button" data-q="1">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo">Deposit</button><p class="wnote">${fmt0(teState().rodux)} Rodux left in the simulated ${TE.name} save.</p></div>`}
       ${history('in')}
       <p class="wnote">Deposits follow the <button class="lnk" data-legal="cds">${TE.name} Currency Deduction Service</button>.</p>`;
     $('#wbk',R).onclick=()=>{method=null;draw()};
@@ -184,7 +187,7 @@ function openWallet(tab='deposit',pre=null){
     B().innerHTML=`${head('Withdraw Rodux')}
       <div class="wbig"><span>Can withdraw</span><b>${chip(22)}${fmt0(w.canBack)}</b><small>You can withdraw up to what you've deposited from ${TE.name}: ${fmt0(w.deposited)} deposited, ${fmt0(w.withdrawn)} already withdrawn.</small></div>
       ${lockNote}
-      ${WAPI.live?`<div id="gx">${liveBody(false)}</div>`:`<div class="wsim"><span class="wlbl">Preview · ${TE.name} is simulated</span><div class="amt">${chip(16)}<input id="wa" type="number" min="1" step="1" value="${w.canBack}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${w.canBack<1?' disabled':''}>Withdraw</button></div>`}
+      ${WAPI.live?`<div id="gx">${liveBody(false)}</div>`:`<div class="wsim"><span class="wlbl">Preview · ${TE.name} is simulated</span><div class="amt" data-cap="${w.canBack}">${chip(20)}<input id="wa" type="number" min="1" step="1" value="${w.canBack}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="lx-quick"><button type="button" data-q=".1">10%</button><button type="button" data-q=".25">25%</button><button type="button" data-q=".5">50%</button><button type="button" data-q="1">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${w.canBack<1?' disabled':''}>Withdraw</button></div>`}
       ${history('out')}`;
     $('#wbk',R).onclick=()=>{method=null;draw()};
     if(WAPI.live){if(GE)wireLive(false);else loadGE().then(()=>{if(B()&&tab==='withdraw'&&method)draw()});return}

@@ -65,7 +65,8 @@ const ICON={
   chat:'<path d="M4 5h16v11H9l-5 4z"/>',
   send:'<path d="M4 12l16-8-6 16-2.5-6.5z"/>',
   users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
-  gem:'<path d="M7 4h10l4 5-9 11L3 9z"/><path d="M3 9h18M9 4l3 5 3-5"/>'
+  gem:'<path d="M7 4h10l4 5-9 11L3 9z"/><path d="M3 9h18M9 4l3 5 3-5"/>',
+  chev:'<path d="M9 6l6 6-6 6"/>'
 };
 const ic=(n,s=20,w=1.8)=>`<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]||''}</svg>`;
 const chip=(s=14)=>`<svg class="chip" width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="var(--gold)"/><circle cx="12" cy="12" r="8.6" fill="none" stroke="var(--chip-ink)" stroke-width="1.4" opacity=".55"/><path d="M9.3 17V7.2h3.4a2.9 2.9 0 0 1 .4 5.8l2.4 4" fill="none" stroke="var(--chip-ink)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -98,8 +99,48 @@ const CAT=[
   ['shalo','Sun Halo','halo',45,'legendary',1600],['eblade','Eclipse Blade','katana',350,'legendary',2400],['gwings','Gilded Wings','wings',44,'legendary',3600],['mcrown','Market Crown','crown',44,'legendary',5200],
   ['ehelm','Empire Helm','helm',352,'limited',9000],['ihalo','Ice Halo','halo',192,'limited',14000],['rwings','Ruby Wings','wings',350,'limited',22000],['ecrown','Empire Crown','crown',282,'limited',40000],['dtrophy','Diamond Trophy','trophy',190,'limited',60000]
 ].map(([id,n,t,h,r,v])=>({id,n,t,h,r,v}));
+// Trade Empire item art: every TradeBlacket item uses the icon of a real Roblox limited, the same
+// catalog Trade Empire's items come from. On the live site the server proxies the current icon
+// (/img/asset/<id>); elsewhere the cached Roblox CDN link is used.
+const RBX={
+  vcap:[12803855954,'Glossy Red Baseball Cap','b1ff24faa7bb10eb7bbc98f7566e6b75','Hat'],
+  tshade:[3798251754,'Sugar Shades','c56a886aa978a6f700b2c318fa383d06','FaceAccessory'],
+  canv:[3798239844,'Frosting Flyers','1b04c25e4e36732e3858039c68dab8a3','BackAccessory'],
+  sbag:[3798248888,'Cake Topper','ec8a595ff6d7ea9ffc81710f29fe5fcb','Hat'],
+  blob:[4773569689,'Epic Egg','421c7c80b13f4126193a5db5133a3b72','Hat'],
+  pmask:[2528066922,'Catrin Dia de Muertos Mask','c7c9fba906fc4778fa3ce8a06f4c1cb9','FaceAccessory'],
+  scap:[3798243238,'Party Fedora','e803136de9f3e95b1777c53643ff98ac','Hat'],
+  nshade:[2470988571,'Spider Headphones','bd1c6944d1bfdbb717a0470a4d55b1b9','Hat'],
+  rkick:[2470988022,'Spider Antlers','8385c0366aae5ee44312a10db3175045','Hat'],
+  mbox:[1230404580,'Back Axe Guitar','761e3fb2433589653debf4c796945086','BackAccessory'],
+  epup:[44113968,'Kuddle E. Koala','ec55f9e55d89ab46c97289a0151ec535','Hat'],
+  bphones:[126892292563296,'Bandana From Beyond','03aee628105a0fb043fa9cbe477b720e','FaceAccessory'],
+  cvisor:[128217885,'Fall Fairy','c24ab7a5304f2b392abe1c257b33263a','ShoulderAccessory'],
+  jpack:[14463095,'Pinstripe Fedora','d6b02e64f1bb4e4b50db8b7c8e265a38','Hat'],
+  nmask:[1048037,'Bighead','d9861256dda2bcdef1e98de4817b8664','Hat'],
+  lblade:[1082932,'Traffic Cone','e5623399b4c331bc3da15e0153d4b40a','Hat'],
+  cboard:[20011925,'Oozing Oscar','6b06b0bfaf4a94e1ace89ffbf48441a0','Hat'],
+  gchain:[16477149823,'Gold Clockwork Headphones','63e255c87aa7e885e8efd89e737d760f','Hat'],
+  pbox:[100425864,'Deluxe Game Headset','f6c2d55ce77ddaccdc5235602bec01ac','Hat'],
+  swings:[835065728,'Clockwork Heartphones','0536efde9c8f98afada5ff627c17b546','Hat'],
+  fhelm:[139578571,'Chi ting','8c0681be930778c80557e747ef330e44','Gear'],
+  vphones:[40493240,'Purple Shades','9c70e14f4b27f018230823b2d8a390c1','FaceAccessory'],
+  apup:[2606191948,'Gingerbread Immortal Sword','fe9067ef2464c5a663a099b6209819f2','BackAccessory'],
+  shalo:[416828455,'Immortal Sword: The Piece Maker','526c21f8c357b511051c311da8f6c827','BackAccessory'],
+  eblade:[2274774123,'Redvalk','29a717da3743e06ba997ebd2162b3fbc','Hat'],
+  gwings:[1744060292,'Poisoned Horns of the Toxic Wasteland','b06f512bdce9ecb993282ce2174cc77f','Hat'],
+  mcrown:[48545806,'Dominus Frigidus','f70fd4f3d53eaba84bb07c10f781d5ec','Hat'],
+  ehelm:[2830437685,'Emerald Valkyrie','b892470012a37d4c7dc997a4a7495902','Hat'],
+  ihalo:[1365767,'Blue Valkyrie','33ebc9fedab2e19a669b6686ad7a656b','Hat'],
+  rwings:[88885069,'Lord of the Federation','2fb3cae0bdd7d2f51af5cd7d4771d57a','Hat'],
+  ecrown:[21070012,'Dominus Empyreus','6e4a60bf8300b35bae657874937adc28','Hat'],
+  dtrophy:[335080779,'Dominus Pittacium','c2975766800eb169659030fb1c9d5fdd','Hat']
+};
+const LIVEHOST=/^https?:$/.test(location.protocol)&&!/claude|localhost|127\.0\.0\.1/.test(location.hostname);
+const rbxImg=(a,h,t)=>LIVEHOST?`/img/asset/${a}`:`https://tr.rbxcdn.com/180DAY-${h}/420/420/${t}/Webp/noFilter`;
+for(const it of CAT){const r=RBX[it.id];if(r){it.a=r[0];it.n=r[1];it.img=rbxImg(r[0],r[2],r[3])}}
 const ITEM=Object.fromEntries(CAT.map(i=>[i.id,i]));
-function itemSvg(id){const i=ITEM[id];if(!i)return'';if(i.img)return `<img class="art" src="${i.img}" alt="" loading="lazy">`;const b=`hsl(${i.h} 72% 56%)`,d=`hsl(${i.h} 55% 28%)`,l=`hsl(${i.h} 95% 80%)`;return `<svg class="art" viewBox="0 0 64 64" aria-hidden="true">${ART[i.t](b,d,l)}</svg>`}
+function itemSvg(id){const i=ITEM[id];if(!i)return'';if(i.img)return `<img class="art rbx" src="${i.img}" alt="" loading="lazy" decoding="async" draggable="false">`;const b=`hsl(${i.h} 72% 56%)`,d=`hsl(${i.h} 55% 28%)`,l=`hsl(${i.h} 95% 80%)`;return `<svg class="art" viewBox="0 0 64 64" aria-hidden="true">${ART[i.t](b,d,l)}</svg>`}
 function itemCard(id,o={}){const i=ITEM[id];return `<div class="itc r-${i.r}${o.cls?' '+o.cls:''}" ${o.attr||''}>${o.top||''}<div class="itc-art">${itemSvg(id)}</div><span class="rar">${RAR[i.r]}</span><div class="itc-n">${esc(i.n)}</div><div class="itc-v">${chip(12)}${fmt(i.v)}</div>${o.bottom||''}</div>`}
 const reelTile=id=>{const i=ITEM[id];return `<div class="rtile r-${i.r}">${itemSvg(id)}<div class="rtile-n">${esc(i.n)}</div><div class="rtile-v">${chip(11)}${fmt(i.v)}</div></div>`};
 const mini=id=>{const i=ITEM[id];return `<span class="mini r-${i.r}">${itemSvg(id)}${esc(i.n)} <span>${fmt(i.v)}</span></span>`};
@@ -186,7 +227,7 @@ function avatar(u,s=30){
 }
 const me=()=>S.user?{name:S.user.name,hue:S.profile.hue,frame:S.profile.frame,item:S.profile.avItem,lvl:lvl(),me:1}:{name:'Guest',hue:220};
 const NAMES=['PixelMarlin','rook_sprint','LunaTrades','KrispyKoi','VaultVibes','neonpine','Tradezilla','mossyfox','Bricktopia','coolerjack','SableRun','OrbitOllie','ZestZebra','quietotter','HexHarbor','Driftwood99','EmberLatch','tidepool_kai','MintCondition','RivetRaven','gl1tchgarden','NovaNibbles','ParcelPilot','frostbyte_7'];
-const BIOS=['Battle me on Royal, 2v2 only','Collecting every halo in the game','Upgrader addict. Send help.','Crash cash-out at 2× gang','Trading since day one','Limited hunter, 3 wings so far','Daily case enjoyer','mines on 3, always'];
+const BIOS=['Battle me on Royal, 2v2 only','Collecting every Valkyrie in the game','Upgrader addict. Send help.','Crash cash-out at 2× gang','Trading since day one','Dominus hunter, 2 so far','Daily case enjoyer','mines on 3, always'];
 function bot(name){
   const h=hash(name);
   return{name,hue:h%360,frame:['none','none','none','gold','neon','prism'][h%6],item:h%3===0?CAT[(h>>3)%CAT.length].id:null,lvl:4+h%58,bio:BIOS[h%BIOS.length],banner:['aurora','ocean','sunset','ember','matrix','royal'][(h>>5)%6],bot:1};
@@ -345,7 +386,7 @@ $$('#tktrack .tk').forEach(t=>t.classList.remove('in'));
 (function tick(){setTimeout(()=>{pushDrop(botDrop());tick()},ri(1600,3400))})();
 
 /* ---------- chat ---------- */
-const LINES=['gg on that 12x crash','just pulled Gilded Wings from the Vault','who wants a 2v2 royal battle','upgrader took my halo again','crazy mode is so fun, lowest wins','mines with 3 is my comfort zone','towers expert is actual pain','dice over 50 all day','blackjack dealer keeps hitting 21','daily case gave me a Jet Pack','finally climbed all 8 floors','roulette green twice in a row??','new profile banner looks clean','anyone else saving for Empire Reserve','cash out early, trust me','shared mode battles are chill'];
+const LINES=['gg on that 12x crash','just pulled Poisoned Horns from the Vault','who wants a 2v2 royal battle','upgrader took my Redvalk again','crazy mode is so fun, lowest wins','mines with 3 is my comfort zone','towers expert is actual pain','dice over 50 all day','blackjack dealer keeps hitting 21','daily case gave me a Party Fedora','finally climbed all 8 floors','roulette green twice in a row??','new profile banner looks clean','anyone else saving for Empire Reserve','cash out early, trust me','shared mode battles are chill'];
 function addChat(m){
   const l=$('#clist'),d=document.createElement('div');d.className='msg'+(m.me?' me':'')+(m.sys?' sys':'');
   const u=m.u||bot(m.name);

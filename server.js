@@ -315,6 +315,39 @@ async function gameMove(req, res, kind) {
   finally { moving.delete(id); }
 }
 
+/* ---------- item icons ---------- */
+// /img/asset/<id> redirects to the current Roblox icon for that asset. Roblox's icon links expire,
+// so they are looked up on demand, batched, and cached for six hours.
+const icons = new Map(); let iconQueue = new Map(), iconTimer = null;
+function iconUrl(id) {
+  const c = icons.get(id);
+  if (c && Date.now() - c.at < 6 * 36e5) return Promise.resolve(c.url);
+  return new Promise(resolve => {
+    if (!iconQueue.has(id)) iconQueue.set(id, []);
+    iconQueue.get(id).push(resolve);
+    if (!iconTimer) iconTimer = setTimeout(flushIcons, 60);
+  });
+}
+async function flushIcons() {
+  const batch = iconQueue; iconQueue = new Map(); iconTimer = null;
+  const ids = [...batch.keys()];
+  for (let i = 0; i < ids.length; i += 100) {
+    const part = ids.slice(i, i + 100); let found = {};
+    try {
+      const r = await fetch(`https://thumbnails.roblox.com/v1/assets?assetIds=${part.join(',')}&returnPolicy=PlaceHolder&size=420x420&format=Webp&isCircular=false`);
+      if (r.ok) for (const x of (await r.json()).data || []) if (x.imageUrl) found[x.targetId] = x.imageUrl;
+    } catch (e) { log('icons', e.message); }
+    for (const id of part) { const url = found[id] || null; if (url) icons.set(id, { url, at: Date.now() }); batch.get(id).forEach(f => f(url)); }
+  }
+}
+async function assetImage(req, res, raw) {
+  if (!/^\d{1,20}$/.test(raw)) return send(res, 404, { error: 'Not found' });
+  const url = await iconUrl(raw);
+  if (!url) return send(res, 404, { error: 'No icon' });
+  res.writeHead(302, { Location: url, 'Cache-Control': 'public, max-age=21600' });
+  return res.end();
+}
+
 /* ---------- http plumbing ---------- */
 function send(res, code, body) {
   if (res.headersSent) return;
@@ -331,7 +364,7 @@ function readRaw(req) {
   });
 }
 async function readJson(req) { try { return JSON.parse((await readRaw(req)).toString('utf8')); } catch { return null; } }
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.md': 'text/plain; charset=utf-8' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.json': 'application/json', '.md': 'text/plain; charset=utf-8' };
 function serveStatic(req, res) {
   const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   let file = path.normalize(path.join(CFG.publicDir, url === '/' ? 'index.html' : url));
@@ -363,6 +396,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/game/deposit') return await gameMove(req, res, 'deposit');
     if (req.method === 'POST' && p === '/api/game/withdraw') return await gameMove(req, res, 'withdraw');
     if (p.startsWith('/api/')) return send(res, 404, { error: 'Not found' });
+    if (req.method === 'GET' && p.startsWith('/img/asset/')) return await assetImage(req, res, p.slice(11));
     if (req.method === 'GET') return serveStatic(req, res);
     return send(res, 405, { error: 'Method not allowed' });
   } catch (e) {

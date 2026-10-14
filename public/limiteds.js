@@ -9,14 +9,22 @@
    ========================================================= */
 const LTD={view:'site',sort:'hi',q:'',sel:new Set(),data:{site:null,game:null},busy:false};
 const HEX=(s=16)=>`<svg class="hexi" width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.2l8.5 4.9v9.8L12 21.8l-8.5-4.9V7.1z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><rect x="8.6" y="8.6" width="6.8" height="6.8" rx="1.2" fill="currentColor"/></svg>`;
-const ltdPic=x=>x.img?`<img src="${esc(x.img)}" alt="" loading="lazy">`:itemSvg(x.art||'mcrown');
+const ltdPic=x=>x.img?`<img class="rbx" src="${esc(x.img)}" alt="" loading="lazy" decoding="async" draggable="false">`:itemSvg(x.art||'mcrown');
+// Preview only: Trade Empire values for the items the simulated inventory uses.
+const TEV={pbox:890,swings:25000,apup:60000,fhelm:69000,shalo:75000,ihalo:250000,eblade:410000,vphones:670000,gwings:1700000,dtrophy:9500000,rwings:10000000,ecrown:9811,ehelm:45000};
 const fmtV=n=>Math.round(n).toLocaleString('en-US');
+const ltdTier=v=>v>=1e6?'s':v>=2e5?'a':v>=5e4?'b':'c';
+const isU=x=>x.limitedType==='LimitedU'||x.limitedType==='Limited U';
+function ltdCard(x,o){return`<button class="inv-card t-${ltdTier(x.value)}${o.on?' on':''}${o.b?' off':''}" data-${o.attr||'i'}="${esc(o.id)}" ${o.b?`title="${esc(o.b)}"`:''}>
+  <span class="inv-ser">#${x.serial||'N/A'}</span>${isU(x)?'<i class="inv-u" title="Limited U">U</i>':''}<span class="inv-ck">${o.on?ic('check',12,3.2):''}</span>
+  <div class="inv-pic">${ltdPic(x)}</div><b class="inv-n">${esc(x.name)}</b><span class="inv-v">${HEX(13)}${fmtV(x.value)}</span>
+  ${o.b?`<span class="inv-flag">${ic(x.listed?'tag':'lock',11,2.4)}${esc(o.b)}</span>`:''}</button>`}
 
 /* ---------- preview data ---------- */
 function ltdDemo(){
-  if(!S.ltd){
-    const pick=[['ecrown',7],['dtrophy',33],['rwings',79],['ihalo',197],['ehelm',3147],['mcrown',1734],['gwings',2531],['shalo',20984]];
-    S.ltd={game:pick.map(([id,s],i)=>({token:`${id}:${s}`,itemId:id,art:id,serial:s,name:ITEM[id].n,value:ITEM[id].v*100,heldUntil:i===6?Date.now()+2*864e5:0,listed:i===7})),site:[]};save();
+  if(!S.ltd||S.ltd.v!==2){
+    const pick=[['ihalo',197],['eblade',12],['fhelm',44],['swings',3],['apup',31],['pbox',17],['gwings',8],['vphones',2]];
+    S.ltd={v:2,game:pick.map(([id,s],i)=>({token:`${id}:${s}`,itemId:id,art:id,serial:s,name:ITEM[id].n,value:TEV[id],limitedType:['ihalo','eblade','gwings'].includes(id)?'LimitedU':'Limited',heldUntil:i===6?Date.now()+2*864e5:0,listed:i===7})),site:[]};save();
   }
   return S.ltd;
 }
@@ -31,13 +39,14 @@ async function ltdSiteItems(){if(!WAPI.live)return ltdDemo().site;const r=await 
 async function openInventory(view='site',o={}){
   if(!S.user){openLogin();return}
   LTD.view=view;LTD.sel=new Set(o.pre||[]);LTD.q='';
-  const m=modal(`<div class="inv-h"><h3>Inventory</h3></div>
-    <div class="inv-tools"><label class="inv-search">${ic('search',16)}<input id="iq" placeholder="Search for an item or #serial..." autocomplete="off"></label>
-      <label class="inv-sort"><select id="isort"><option value="hi">Highest to Lowest</option><option value="lo">Lowest to Highest</option><option value="az">Name A to Z</option><option value="new">Serial number</option></select></label></div>
-    <div class="inv-total"><span class="inv-ti">${HEX(26)}</span><div><span>TOTAL VALUE</span><b id="itv">0</b></div><button class="inv-switch" id="isw"></button></div>
+  const m=modal(`<div class="lx-ihead"><div class="lx-ibrand"><img src="te-limiteds.webp" alt="Trade Empire Limiteds"><div><span class="lx-eyebrow">Trade Empire</span><h3>Limiteds</h3></div></div>
+      <div class="lx-seg" role="tablist" id="isw"><button role="tab" data-iv="game">In ${TE.name}</button><button role="tab" data-iv="site">On TradeBlacket</button><i></i></div></div>
+    <div class="lx-port"><div class="lx-pv"><span>Total value</span><b>${HEX(22)}<i id="itv">0</i></b></div><div class="lx-pc"><span>Items</span><b id="icnt">0</b></div>
+      <label class="inv-search">${ic('search',16)}<input id="iq" placeholder="Search for an item or #serial" autocomplete="off"></label>
+      <label class="inv-sort"><select id="isort" aria-label="Sort"><option value="hi">Highest value</option><option value="lo">Lowest value</option><option value="az">Name A to Z</option><option value="new">Serial number</option></select></label></div>
     <div class="inv-note" id="inote" hidden></div>
     <div class="inv-grid" id="igrid"><div class="inv-load"><div class="spin"></div></div></div>
-    <div class="inv-foot"><button class="inv-all" id="iall">Select all</button><div class="spacer"></div><button class="inv-go" id="igo"><span id="igl">Withdraw</span><i></i>${HEX(15)}<b id="igv">0</b></button></div>`,{cls:'invm'});
+    <div class="inv-foot"><button class="inv-all" id="iall">Select all</button><span class="inv-sum" id="isel"></span><button class="inv-go" id="igo"><span id="igl">Withdraw</span><i></i>${HEX(15)}<b id="igv">0</b></button></div>`,{cls:'invm lux'});
   const R=m.root;
   const items=()=>{const d=LTD.data[LTD.view];return d&&d.items?d.items:[]};
   const idOf=x=>LTD.view==='site'?x.uid:x.token;
@@ -49,9 +58,9 @@ async function openInventory(view='site',o={}){
   }
   function draw(){
     const d=LTD.data[LTD.view],site=LTD.view==='site',L=list();
-    $('#isw',R).innerHTML=`${ic('plus',15,2.4)}${site?'Deposit':'Withdraw'}`;
-    $('#itv',R).textContent=fmtV(items().reduce((a,x)=>a+x.value,0));
-    $('#igl',R).textContent=site?'Withdraw':'Deposit';
+    $$('[data-iv]',R).forEach(b=>{const on=b.dataset.iv===LTD.view;b.classList.toggle('on',on);b.setAttribute('aria-selected',on)});$('#isw',R).classList.toggle('r',site);
+    $('#itv',R).textContent=fmtV(items().reduce((a,x)=>a+x.value,0));$('#icnt',R).textContent=fmtV(items().length);
+    $('#igl',R).textContent=site?`Withdraw to ${TE.name}`:'Deposit to TradeBlacket';
     const note=$('#inote',R),notes=[];
     if(d&&d.error)notes.push(['err',d.error]);
     if(!site&&d){
@@ -65,22 +74,19 @@ async function openInventory(view='site',o={}){
     const g=$('#igrid',R);
     if(!d){g.innerHTML='<div class="inv-load"><div class="spin"></div></div>';return foot()}
     if(!L.length){g.innerHTML=`<div class="inv-empty"><span>${ic('search',26,2)}</span><b>No items!</b><p>${LTD.q?'No items match that search.':site?'No items were found...':`No limiteds found in your ${TE.name} save.`}</p><div>${site?'<button class="inv-btn blue" data-isw>Deposit</button>':''}<button class="inv-btn green" data-go="market">${ic('market',16)}Purchase</button></div></div>`;return foot()}
-    g.innerHTML=L.map(x=>{const b=blocked(x),id=idOf(x),on=LTD.sel.has(id);return`<button class="inv-card${on?' on':''}${b?' off':''}" data-i="${esc(id)}" ${b?`title="${esc(b)}"`:''}>
-      <span class="inv-ck">${on?ic('check',12,3.2):''}</span><div class="inv-pic">${ltdPic(x)}${x.limitedType==='LimitedU'||x.limitedType==='Limited U'?'<i class="inv-u">U</i>':''}</div>
-      ${b?`<span class="inv-flag">${ic(x.listed?'tag':'lock',11,2.4)}${esc(b)}</span>`:''}
-      <span class="inv-ser">#${x.serial||'N/A'}</span><b class="inv-n">${esc(x.name)}</b><span class="inv-v">${HEX(13)}${fmtV(x.value)}</span></button>`}).join('');
+    g.innerHTML=L.map(x=>{const b=blocked(x),id=idOf(x),on=LTD.sel.has(id);return ltdCard(x,{id,on,b})}).join('');
     foot();
   }
   function foot(){
     const sel=items().filter(x=>LTD.sel.has(idOf(x))),v=sel.reduce((a,x)=>a+x.value,0);
     $('#igv',R).textContent=fmtV(v);$('#igo',R).disabled=!sel.length||LTD.busy;
-    $('#iall',R).textContent=sel.length?'Clear':'Select all';
+    $('#iall',R).textContent=sel.length?'Clear':'Select all';$('#isel',R).innerHTML=sel.length?`<b>${sel.length}</b> selected`:'Pick the items to move';
   }
   async function load(force){LTD.data[LTD.view]=null;draw();await ltdLoad(LTD.view,force);if(R.isConnected)draw()}
   $('#iq',R).oninput=e=>{LTD.q=e.target.value.trim().toLowerCase();draw()};
   $('#isort',R).onchange=e=>{LTD.sort=e.target.value;draw()};
   const swap=()=>{LTD.view=LTD.view==='site'?'game':'site';LTD.sel=new Set();load()};
-  $('#isw',R).onclick=swap;
+  $$('[data-iv]',R).forEach(b=>b.onclick=()=>{if(b.dataset.iv!==LTD.view)swap()});
   R.addEventListener('click',e=>{
     if(e.target.closest('[data-isw]')){if(LTD.view==='site')swap();return}
     const c=e.target.closest('[data-i]');if(!c||c.classList.contains('off'))return;
@@ -109,8 +115,8 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-inv]');if(
 /* ---------- item coinflip ---------- */
 const FL={list:null,timer:0,demo:null};
 function flDemo(){
-  if(!FL.demo){const mk=(name,ids,side)=>({id:uid(),side,creator:name,own:false,mine:false,cItems:ids.map(([a,s])=>({itemId:a,art:a,serial:s,name:ITEM[a].n,value:ITEM[a].v*100})),status:'open',seedHash:Array.from({length:64},()=>'0123456789abcdef'[ri(0,15)]).join('')});
-    FL.demo={open:[mk('VaultVibes',[['gwings',812],['shalo',90]],'h'),mk('LunaTrades',[['ehelm',4410]],'t'),mk('PixelMarlin',[['mcrown',2290],['eblade',611],['apup',5]],'h')],recent:[]};
+  if(!FL.demo){const mk=(name,ids,side)=>({id:uid(),side,creator:name,own:false,mine:false,cItems:ids.map(([a,s])=>({itemId:a,art:a,serial:s,name:ITEM[a].n,value:TEV[a]})),status:'open',seedHash:Array.from({length:64},()=>'0123456789abcdef'[ri(0,15)]).join('')});
+    FL.demo={open:[mk('VaultVibes',[['shalo',61],['fhelm',90]],'h'),mk('LunaTrades',[['ihalo',402]],'t'),mk('PixelMarlin',[['eblade',77],['apup',5]],'h')],recent:[]};
     FL.demo.open.forEach(f=>{f.cValue=f.cItems.reduce((a,x)=>a+x.value,0);f.range=[Math.ceil(f.cValue*.9),Math.floor(f.cValue*1.1)]})}
   return FL.demo;
 }
@@ -165,11 +171,11 @@ async function openFlipPicker(f,done){
       :`<div class="fld"><span>Your side</span>${seg('fls',[['h','Crown'],['t','Tower']],'h')}</div>`}
     <span class="eyebrow" style="margin-top:8px">Your items</span><div class="inv-grid sm" id="flg"><div class="inv-load"><div class="spin"></div></div></div>
     <div class="kv" style="margin-top:10px"><span>Selected</span><b id="flv">0</b></div><div class="err" id="fle"></div>
-    <button class="cta" id="flgo" disabled>${f?'Join flip':'Create flip'}</button>`,{cls:'wide'});
+    <button class="cta" id="flgo" disabled>${f?'Join flip':'Create flip'}</button>`,{cls:'wide lux'});
   const R=m.root;if(!f)wireSeg($('#fls',R),v=>side=v);
   const mine=(await ltdSiteItems()).filter(x=>x.status==='held');if(!R.isConnected)return;
   const g=$('#flg',R);
-  g.innerHTML=mine.length?mine.sort((a,b)=>b.value-a.value).map(x=>`<button class="inv-card" data-u="${x.uid}"><span class="inv-ck"></span><div class="inv-pic">${ltdPic(x)}</div><span class="inv-ser">#${x.serial}</span><b class="inv-n">${esc(x.name)}</b><span class="inv-v">${HEX(13)}${fmtV(x.value)}</span></button>`).join('')
+  g.innerHTML=mine.length?mine.sort((a,b)=>b.value-a.value).map(x=>ltdCard(x,{id:x.uid,attr:'u'})).join('')
     :`<div class="inv-empty"><b>No items on TradeBlacket</b><p>Deposit limiteds from ${TE.name} first.</p><div><button class="inv-btn blue" data-inv="game">Deposit items</button></div></div>`;
   const upd=()=>{const v=mine.filter(x=>sel.has(x.uid)).reduce((a,x)=>a+x.value,0),inR=!f||(v>=f.range[0]&&v<=f.range[1]);
     $('#flv',R).innerHTML=`${HEX(14)}${fmtV(v)}${f?(inR?' <span style="color:var(--win)">in range</span>':` <span style="color:var(--loss)">needs ${fmtV(f.range[0])} – ${fmtV(f.range[1])}</span>`):''}`;$('#flgo',R).disabled=!sel.size||!inR||v<1};
