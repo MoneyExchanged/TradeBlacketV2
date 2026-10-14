@@ -120,3 +120,13 @@ async function drawBans(box){
   $('#bngo',box).onclick=async()=>{const who=$('#bnw',box).value.trim();if(!who)return;const x=await api('/api/admin/ban',{who,reason:$('#bnr',box).value.trim()});if(!x.ok)return toast(x.j.error,'loss');toast('Banned.');drawBans(box)};
   $$('[data-unban]',box).forEach(b=>b.onclick=async()=>{const x=await api('/api/admin/unban',{robloxId:Number(b.dataset.unban)});if(!x.ok)return toast(x.j.error,'loss');toast('Unbanned.');drawBans(box)});
 }
+
+/* ---------- no browsing without an account while TradeBlacket is invite-only ---------- */
+// TB_GATE stays "invite-only" until the server answers that the site is open to everyone, so a
+// failed or slow check never lets anyone in. The sign-in screen cannot be removed while signed out.
+(async()=>{try{const r=await fetch('/api/site-waitlist',{credentials:'same-origin',cache:'no-store'});if(r.ok){const j=await r.json();if(j&&j.gate===false)window.TB_GATE=false}}catch{}})();
+function swNeedSignIn(){return !S.user&&window.TB_GATE!==false}
+{const g=$('#gate');if(g)new MutationObserver(()=>{if(swNeedSignIn()&&!g.innerHTML.trim())setTimeout(()=>{if(swNeedSignIn()&&!$('#gate').innerHTML.trim())showGate('in')},50)}).observe(g,{childList:true})}
+{const g0=go;go=function(...a){if(swNeedSignIn()){S.guest=false;if(!$('#gate').innerHTML.trim())showGate('in');return}return g0.apply(this,a)}}
+// a signed-out visitor who still had "guest" saved gets the sign-in screen
+if(swNeedSignIn()&&!$('#gate').innerHTML.trim()){S.guest=false;save();showGate('up')}

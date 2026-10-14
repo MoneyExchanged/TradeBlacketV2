@@ -51,11 +51,12 @@ function showGate(mode='up'){
       <div class="gate-mlogo">${logo}</div>
       <div class="lx-seg gseg" id="gseg"><button data-gt="up">Create account</button><button data-gt="in">Sign in</button><i></i></div>
       <div id="gbody"></div>
-      <p class="guest">Just looking? <button id="guest">Browse without an account</button></p>
+      ${window.TB_GATE===false?'<p class="guest">Just looking? <button id="guest">Browse without an account</button></p>':'<p class="guest">TradeBlacket is invite-only. Sign in with Roblox to join the waitlist.</p>'}
     </div></div>
   </div>`;
   const close=()=>{cancelAnimationFrame(raf);g.innerHTML=''};
-  $('#guest',g).onclick=()=>{S.guest=true;save();close()};
+  // Browsing without an account only exists while the site is open to everyone (SITE_WAITLIST=off).
+  const gb=$('#guest',g);if(gb)gb.onclick=()=>{if(window.TB_GATE!==false)return;S.guest=true;save();close()};
   $$('[data-gt]',g).forEach(b=>b.onclick=()=>{mode=b.dataset.gt;s1()});
   // left-side chart
   (function anim(){
@@ -266,5 +267,7 @@ PAGES.rewards=el=>{
 (function(){
   const h=location.hash.slice(1);
   go(PAGES[h]&&!['case','battle','slot','article'].includes(h)?h:'home');
+  // invite-only unless the server says otherwise: nobody browses without signing in
+  if(!S.user&&window.TB_GATE!==false&&S.guest){S.guest=false;save()}
   if(!S.user&&!S.guest)showGate('up');
 })();
