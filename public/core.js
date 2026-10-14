@@ -436,7 +436,7 @@ function openFair(){
   <p class="fine">Prototype: results are generated in your browser. The live site should roll them on the server, publish a hashed seed before each round and reveal it after, so players can check every result.</p>`);
 }
 function openRules(){
-  modal(`<span class="eyebrow">House rules</span><h3>How TradeBlacket works</h3><ul class="how" style="margin-bottom:0"><li>Rodux and limiteds move between Trade Empire and TradeBlacket from the Wallet on this site, while you're out of the game. You can withdraw up to the Rodux you deposited.</li><li>Never sell or buy Rodux or items for real money.</li><li>Bonus Rodux from daily rewards, missions, codes and level-ups must be wagered once before it can be withdrawn.</li><li>You must be 16 or older to play.</li><li>Be kind in chat. Scams, begging and spam get muted.</li></ul>`);
+  modal(`<span class="eyebrow">House rules</span><h3>How TradeBlacket works</h3><ul class="how" style="margin-bottom:0"><li>Rodux and limiteds move between Trade Empire and TradeBlacket from the Wallet on this site, while you're out of the game. You can withdraw up to the Rodux you deposited.</li><li>Never sell or buy Rodux or items for real money.</li><li>Bonus Rodux from daily rewards, missions, codes and level-ups must be wagered once before it can be withdrawn.</li><li>You must be 18 or older to play.</li><li>Be kind in chat. Scams, begging and spam get muted.</li></ul>`);
 }
 
 /* ---------- public profile modal ---------- */

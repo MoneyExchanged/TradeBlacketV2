@@ -46,7 +46,7 @@ against a fake data store.
   - The Open Cloud key needs **Read Entry** on `ItemStore_v1`, `MarketStore_v1` and `ProfileMail_v1`, on top of read/create/update on `PlayerStore_v1`.
 - **Limited Flip**: player-versus-player coinflips with items. The joiner matches the creator's value within 10%. The result is `sha256(seed:joinerId:flipId)`, first byte, even = Crown, with the seed's hash shown up front. No house fee; items only change owner, so supply never changes.
 - **Responsible play** (`limits.js`): screen time, reality checks, deposit caps, item caps, largest bet, loss limit, breaks and self-exclusion. Stricter changes apply now, looser ones after 24 hours. Withdrawals are never blocked. The loss limit uses the net the browser reports until games move to the server.
-- **Legal**: Terms of Service, License Agreement and Trade Empire Currency Deduction Service live in `public/account.js`. Acceptance is stored per user (`tos_version`, `cds_version`). Have them reviewed by a lawyer.
+- **Legal**: TradeBlacket is for players aged 18 and over (Terms version `2026-10-14.2`; existing players confirm their age and re-accept, and can always withdraw). Terms of Service, License Agreement and Trade Empire Currency Deduction Service live in `public/account.js`. Acceptance is stored per user (`tos_version`, `cds_version`). Have them reviewed by a lawyer.
 
 ## Going live
 

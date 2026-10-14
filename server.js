@@ -77,7 +77,7 @@ db.exec(`
   if (!cols.includes('tos_version')) db.exec('ALTER TABLE users ADD COLUMN tos_version TEXT');
   if (!cols.includes('cds_version')) db.exec('ALTER TABLE users ADD COLUMN cds_version TEXT'); }
 // Bump these when a document changes in a way players must agree to again.
-const LEGAL = { tos: '2026-10-14', cds: '2026-10-14' };
+const LEGAL = { tos: '2026-10-14.2', cds: '2026-10-14' }; // tos .2: TradeBlacket is 18+
 const now = () => Date.now();
 const tx = fn => { db.exec('BEGIN IMMEDIATE'); try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; } };
 const q = {

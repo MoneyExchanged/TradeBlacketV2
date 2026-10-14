@@ -6,7 +6,7 @@
    The page mirrors them so it can explain a refusal before the server has to.
    Preview: the same rules run in the browser.
    ========================================================= */
-const LEGAL_V={tos:'2026-10-14',cds:'2026-10-14'};
+const LEGAL_V={tos:'2026-10-14.2',cds:'2026-10-14'};
 const UPDATED='October 14, 2026';
 
 /* ---------- the documents ---------- */
@@ -14,7 +14,7 @@ const UPDATED='October 14, 2026';
 const DOCS={
 tos:{t:'Terms of Service',s:'The rules for using TradeBlacket.',b:[
 ['Who we are','TradeBlacket is a fan-run website for players of the Roblox experience Trade Empire. It is run by the team behind Trade Empire. It is not made, endorsed or sponsored by Roblox Corporation. "We" and "us" mean the TradeBlacket team; "you" means anyone who uses the site.'],
-['Age','You must be 16 or older to use TradeBlacket. By signing up you confirm you are. If we learn an account belongs to someone younger, we close it and return what we can to their Trade Empire save.'],
+['Age','You must be 18 or older to use TradeBlacket. By signing up, and by accepting these terms, you confirm you are. If we learn an account belongs to someone younger, we close it and return what we can to their Trade Empire save.'],
 ['Your account','You sign in by proving you own a Roblox account through a phrase in its About text. One TradeBlacket account per person and per Roblox account. You are responsible for everything done on your account. Do not share it or let anyone else play on it.'],
 ['Rodux and limiteds have no real-world value','Rodux and Trade Empire limiteds are virtual items inside a game. They are not money, cannot be bought on TradeBlacket, and can never be exchanged for real money, cryptocurrency, Robux or anything of value outside Trade Empire. We never sell Rodux or items and never pay anything out other than Rodux and items back to your Trade Empire save. Buying, selling or trading Rodux, items or accounts for real money or anything outside the game is banned, and accounts involved are closed.'],
 ['Deposits and withdrawals','Rodux and limiteds move between your Trade Empire save and TradeBlacket only through the Wallet on this site, while you are out of the game. How that works, and what we may and may not do to your save, is set out in the Trade Empire Currency Deduction Service, which forms part of these terms. You can withdraw Rodux up to the amount you have deposited. Bonus Rodux from rewards, codes, levels and rakeback has to be wagered once before it can be withdrawn. Items you hold on TradeBlacket can always be withdrawn to your save unless they are in an open coinflip.'],
@@ -60,14 +60,14 @@ async function accept(k){
   if(WAPI.live){const r=await api('/api/legal/accept',{doc:k,version:LEGAL_V[k]});if(!r.ok){toast(r.j.error||'Could not save that. Try again.','loss');return false}await syncMe()}
   S.legal={...(S.legal||{}),[k]:LEGAL_V[k]};save();return true;
 }
-function acceptModal(k,docs,lead){
+function acceptModal(k,docs,lead,age){
   return new Promise(res=>{
     let done=false;
     const m=modal(`<span class="eyebrow">Please read</span><h3>${docs.map(d=>DOCS[d].t).join(' and ')}</h3><p>${lead}</p>
       <div class="legal-box">${docs.map(d=>`<h5>${DOCS[d].t}</h5>${docHtml(d)}`).join('')}</div>
-      <label class="check" style="margin:14px 0"><input type="checkbox" id="lgk"> I have read and agree to the ${docs.map(d=>DOCS[d].t).join(' and the ')}.</label>
+      ${age?'<label class="check" style="margin:14px 0 0"><input type="checkbox" id="lga"> I am 18 or older.</label>':''}<label class="check" style="margin:14px 0"><input type="checkbox" id="lgk"> I have read and agree to the ${docs.map(d=>DOCS[d].t).join(' and the ')}.</label>
       <div class="err" id="lge"></div><button class="cta" id="lgo" disabled>Agree and continue</button>`,{cls:'mid',onClose:()=>{if(!done)res(false)}});
-    const R=m.root;$('#lgk',R).onchange=e=>$('#lgo',R).disabled=!e.target.checked;
+    const R=m.root,chk=()=>{$('#lgo',R).disabled=!$('#lgk',R).checked||(age&&!$('#lga',R).checked)};$('#lgk',R).onchange=chk;if(age)$('#lga',R).onchange=chk;
     $('#lgo',R).onclick=async()=>{$('#lgo',R).disabled=true;for(const x of k)if(!(await accept(x))){$('#lgo',R).disabled=false;return}done=true;m.close();res(true)};
   });
 }
@@ -79,7 +79,7 @@ async function needCds(){
 let tosAsked=false;
 async function needTos(){
   if(!S.user||accepted('tos')||tosAsked)return true;
-  tosAsked=true;const ok=await acceptModal(['tos'],['tos','license'],'We updated our terms. Please read and accept them to keep playing. Withdrawals stay open either way.');
+  tosAsked=true;const ok=await acceptModal(['tos'],['tos','license'],'TradeBlacket is now for players aged 18 and over. Please confirm your age and accept the updated terms to keep playing. If you are under 18 you can still withdraw everything you hold.',true);
   tosAsked=false;return ok;
 }
 
