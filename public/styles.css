@@ -1719,3 +1719,24 @@ body.calm *{animation-duration:.01ms!important;transition-duration:.01ms!importa
 .lm-seller{display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--dim);margin-top:6px}
 .inv-x.arm{background:linear-gradient(180deg,#F8E6B4,#E7C77F);color:#241703;border-color:transparent}
 .inv-foot .amt input{font-size:15px}
+
+/* ---------- site waitlist (full screen, after sign-in) ---------- */
+body.sw-open{overflow:hidden}
+#sitewait{position:fixed;inset:0;z-index:68;overflow-y:auto;background:radial-gradient(70% 60% at 85% 0%,rgba(231,199,127,.12),transparent 60%),radial-gradient(60% 60% at 0% 100%,rgba(61,139,253,.10),transparent 60%),#05080C;animation:fade .35s;transition:opacity .45s}
+#sitewait.out{opacity:0;pointer-events:none}
+.sw-cv{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;opacity:.9}
+.sw-wrap{position:relative;min-height:100%;max-width:1120px;margin:0 auto;padding:28px max(16px,env(safe-area-inset-left,0px)) 24px;display:flex;flex-direction:column;gap:28px}
+.sw-top{display:flex;align-items:center;justify-content:space-between}
+.sw-top .logo{cursor:default}
+.sw-main{flex:1;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(300px,.75fr);gap:48px;align-items:center}
+.sw-copy h1{font-size:clamp(34px,5vw,64px);font-weight:800;letter-spacing:-.045em;line-height:1;margin:0 0 18px;max-width:14ch;background:linear-gradient(180deg,#fff 30%,#D9C79A);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sw-copy>p{color:#AAB6C5;max-width:50ch;line-height:1.6;margin:0;font-size:16px}
+.sw-copy .note{margin-top:14px}
+.sw-card{padding:30px 24px 28px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.sw-card .cta{width:100%}
+.sw-who{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:6px 14px 6px 6px;border-radius:99px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);font-size:14px}
+.sw-foot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;font-size:13px;color:var(--muted);border-top:1px solid rgba(255,255,255,.06);padding-top:16px}
+.sw-foot button{color:#C9D3DF;font-weight:600;padding:6px 0}
+.sw-foot button:hover{color:#F8E6B4}
+.sw-foot span{margin-left:auto}
+@media (max-width:860px){.sw-main{grid-template-columns:1fr;gap:28px}.sw-foot span{margin-left:0;width:100%}}

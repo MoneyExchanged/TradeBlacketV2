@@ -47,20 +47,21 @@ function waitlistPage(el){
   el.innerHTML='<div class="inv-load"><div class="spin"></div></div>';
   wlLoad().then(()=>{if(el.isConnected)draw()});
 }
-async function drawAdmin(box){
-  const r=await api('/api/admin/waitlist');if(!r.ok||!box.isConnected)return;const A=r.j;
-  box.innerHTML=`<div class="sec-h"><h3 class="sec">Admin</h3><span class="note">Only you see this</span></div>
+async function drawAdmin(box,scope='slots'){
+  const B=scope==='site'?'/api/admin/site/':'/api/admin/';
+  const r=await api(B+'waitlist');if(!r.ok||!box.isConnected)return;const A=r.j;
+  box.innerHTML=`<div class="sec-h"><h3 class="sec">${scope==='site'?'Site waitlist':'Slots waitlist'}</h3><span class="note">Only admins see this</span></div>
     <div class="wl-agrid">
       <div class="card"><h4>Let players in</h4><p class="note">${fmt0(A.waiting)} waiting, ${fmt0(A.granted)} with access</p><div class="wl-row"><input class="txt" id="wlg" type="number" min="1" value="10"><button class="cta inline" id="wlgo">Let in next</button></div></div>
       <div class="card"><h4>Make access codes</h4><div class="wl-row"><input class="txt" id="wlcn" type="number" min="1" max="50" value="1" title="How many codes"><input class="txt" id="wlcu" type="number" min="1" value="1" title="Uses per code"><input class="txt" id="wlno" placeholder="Note (optional)"></div><button class="cta inline" id="wlmk">Make codes</button><div id="wlout"></div></div>
     </div>
     <div class="card wl-table"><h4>Codes</h4>${A.codes.length?`<table><thead><tr><th>Code</th><th>Used</th><th>Left</th><th>Note</th></tr></thead><tbody>${A.codes.map(c=>`<tr><td><code>${esc(c.code)}</code></td><td>${c.used}</td><td>${c.uses_left}</td><td>${esc(c.note||'')}</td></tr>`).join('')}</tbody></table>`:'<p class="note">No codes yet.</p>'}</div>
     <div class="card wl-table"><h4>Waitlist</h4>${A.list.length?`<table><thead><tr><th>#</th><th>Player</th><th>Joined</th><th>Access</th><th></th></tr></thead><tbody>${A.list.map(w=>`<tr><td>${w.pos}</td><td>${esc(w.username||String(w.roblox_id))}</td><td>${new Date(w.joined_at).toLocaleString()}</td><td>${w.via?esc(w.via):'Waiting'}</td><td>${w.via?`<button class="lnk" data-rv="${w.roblox_id}">Remove access</button>`:''}</td></tr>`).join('')}</tbody></table>`:'<p class="note">Nobody has joined yet.</p>'}</div>`;
-  $('#wlgo',box).onclick=async()=>{const r=await api('/api/admin/grant',{count:+$('#wlg',box).value});if(r.ok){toast(`Let in ${r.j.granted} player${r.j.granted===1?'':'s'}.`,'win');drawAdmin(box)}else toast(r.j.error,'loss')};
-  $('#wlmk',box).onclick=async()=>{const r=await api('/api/admin/codes',{count:+$('#wlcn',box).value,uses:+$('#wlcu',box).value,note:$('#wlno',box).value});
+  $('#wlgo',box).onclick=async()=>{const r=await api(B+'grant',{count:+$('#wlg',box).value});if(r.ok){toast(`Let in ${r.j.granted} player${r.j.granted===1?'':'s'}.`,'win');drawAdmin(box,scope)}else toast(r.j.error,'loss')};
+  $('#wlmk',box).onclick=async()=>{const r=await api(B+'codes',{count:+$('#wlcn',box).value,uses:+$('#wlcu',box).value,note:$('#wlno',box).value});
     if(!r.ok)return toast(r.j.error,'loss');$('#wlout',box).innerHTML=`<div class="wl-codes">${r.j.codes.map(c=>`<button class="wl-chip" data-cp="${c}" title="Copy">${c}</button>`).join('')}</div>`};
   box.onclick=async e=>{const c=e.target.closest('[data-cp]');if(c){navigator.clipboard.writeText(c.dataset.cp).then(()=>toast('Code copied.'));return}
-    const v=e.target.closest('[data-rv]');if(v){await api('/api/admin/revoke',{robloxId:+v.dataset.rv});drawAdmin(box)}};
+    const v=e.target.closest('[data-rv]');if(v){await api(B+'revoke',{robloxId:+v.dataset.rv});drawAdmin(box,scope)}};
 }
 
 // Slots and every single slot game show the waitlist until the player has access.

@@ -1,8 +1,8 @@
-// Slots waitlist and access codes.
+// Waitlists and access codes, for the whole site ("site") and for slots ("slots").
 //
-// Slots are closed for now. Players join a waitlist and keep the place they joined in: the first
-// to join is #1. Access is given in waitlist order by an admin, or straight away with an access
-// code. Admins are the Roblox accounts in ADMIN_ROBLOX_IDS.
+// Players sign in, join a waitlist and keep the place they joined in: the first to join is #1.
+// Access is given in waitlist order by an admin, or straight away with an access code made for that
+// list. Admins are the Roblox accounts in ADMIN_ROBLOX_IDS and always have access.
 'use strict';
 const crypto = require('node:crypto');
 
@@ -13,28 +13,30 @@ const norm = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 class WaitError extends Error { constructor(msg, code = 400) { super(msg); this.code = code; } }
 
-function create({ db, tx }) {
-  db.exec(`CREATE TABLE IF NOT EXISTS waitlist (pos INTEGER PRIMARY KEY AUTOINCREMENT, roblox_id INTEGER NOT NULL UNIQUE, joined_at INTEGER NOT NULL)`);
-  db.exec(`CREATE TABLE IF NOT EXISTS slot_access (roblox_id INTEGER PRIMARY KEY, via TEXT NOT NULL, granted_at INTEGER NOT NULL)`);
+function create({ db, tx, scope = 'slots' }) {
+  const W = scope === 'site' ? 'site_waitlist' : 'waitlist', A = scope === 'site' ? 'site_access' : 'slot_access';
+  db.exec(`CREATE TABLE IF NOT EXISTS ${W} (pos INTEGER PRIMARY KEY AUTOINCREMENT, roblox_id INTEGER NOT NULL UNIQUE, joined_at INTEGER NOT NULL)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS ${A} (roblox_id INTEGER PRIMARY KEY, via TEXT NOT NULL, granted_at INTEGER NOT NULL)`);
   db.exec(`CREATE TABLE IF NOT EXISTS access_codes (code TEXT PRIMARY KEY, uses_left INTEGER NOT NULL, note TEXT, created_by INTEGER, created_at INTEGER NOT NULL)`);
   db.exec(`CREATE TABLE IF NOT EXISTS code_uses (code TEXT NOT NULL, roblox_id INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (code, roblox_id))`);
+  if (!db.prepare('PRAGMA table_info(access_codes)').all().some(c => c.name === 'scope')) db.exec("ALTER TABLE access_codes ADD COLUMN scope TEXT NOT NULL DEFAULT 'slots'");
   const q = {
-    entry: db.prepare('SELECT * FROM waitlist WHERE roblox_id = ?'),
-    join: db.prepare('INSERT OR IGNORE INTO waitlist (roblox_id, joined_at) VALUES (?, ?)'),
-    total: db.prepare('SELECT COUNT(*) AS n FROM waitlist'),
-    waitingAhead: db.prepare('SELECT COUNT(*) AS n FROM waitlist w WHERE w.pos < ? AND NOT EXISTS (SELECT 1 FROM slot_access a WHERE a.roblox_id = w.roblox_id)'),
-    waiting: db.prepare('SELECT COUNT(*) AS n FROM waitlist w WHERE NOT EXISTS (SELECT 1 FROM slot_access a WHERE a.roblox_id = w.roblox_id)'),
-    access: db.prepare('SELECT * FROM slot_access WHERE roblox_id = ?'),
-    grant: db.prepare('INSERT OR IGNORE INTO slot_access (roblox_id, via, granted_at) VALUES (?, ?, ?)'),
-    revoke: db.prepare('DELETE FROM slot_access WHERE roblox_id = ?'),
-    granted: db.prepare('SELECT COUNT(*) AS n FROM slot_access'),
-    code: db.prepare('SELECT * FROM access_codes WHERE code = ?'),
-    addCode: db.prepare('INSERT INTO access_codes (code, uses_left, note, created_by, created_at) VALUES (?, ?, ?, ?, ?)'),
-    useCode: db.prepare('UPDATE access_codes SET uses_left = uses_left - 1 WHERE code = ? AND uses_left > 0'),
-    addUse: db.prepare('INSERT INTO code_uses (code, roblox_id, at) VALUES (?, ?, ?)'),
-    codes: db.prepare('SELECT c.code, c.uses_left, c.note, c.created_at, (SELECT COUNT(*) FROM code_uses u WHERE u.code = c.code) AS used FROM access_codes c ORDER BY c.created_at DESC LIMIT 100'),
-    next: db.prepare('SELECT w.roblox_id FROM waitlist w WHERE NOT EXISTS (SELECT 1 FROM slot_access a WHERE a.roblox_id = w.roblox_id) ORDER BY w.pos LIMIT ?'),
-    list: db.prepare(`SELECT w.pos, w.roblox_id, u.username, w.joined_at, a.via, a.granted_at FROM waitlist w LEFT JOIN users u ON u.roblox_id = w.roblox_id LEFT JOIN slot_access a ON a.roblox_id = w.roblox_id ORDER BY w.pos LIMIT 500`),
+    entry: db.prepare(`SELECT * FROM ${W} WHERE roblox_id = ?`),
+    join: db.prepare(`INSERT OR IGNORE INTO ${W} (roblox_id, joined_at) VALUES (?, ?)`),
+    total: db.prepare(`SELECT COUNT(*) AS n FROM ${W}`),
+    waitingAhead: db.prepare(`SELECT COUNT(*) AS n FROM ${W} w WHERE w.pos < ? AND NOT EXISTS (SELECT 1 FROM ${A} a WHERE a.roblox_id = w.roblox_id)`),
+    waiting: db.prepare(`SELECT COUNT(*) AS n FROM ${W} w WHERE NOT EXISTS (SELECT 1 FROM ${A} a WHERE a.roblox_id = w.roblox_id)`),
+    access: db.prepare(`SELECT * FROM ${A} WHERE roblox_id = ?`),
+    grant: db.prepare(`INSERT OR IGNORE INTO ${A} (roblox_id, via, granted_at) VALUES (?, ?, ?)`),
+    revoke: db.prepare(`DELETE FROM ${A} WHERE roblox_id = ?`),
+    granted: db.prepare(`SELECT COUNT(*) AS n FROM ${A}`),
+    code: db.prepare(`SELECT * FROM access_codes WHERE code = ?`),
+    addCode: db.prepare(`INSERT INTO access_codes (code, uses_left, note, created_by, created_at, scope) VALUES (?, ?, ?, ?, ?, '${scope}')`),
+    useCode: db.prepare(`UPDATE access_codes SET uses_left = uses_left - 1 WHERE code = ? AND uses_left > 0`),
+    addUse: db.prepare(`INSERT INTO code_uses (code, roblox_id, at) VALUES (?, ?, ?)`),
+    codes: db.prepare(`SELECT c.code, c.uses_left, c.note, c.created_at, (SELECT COUNT(*) FROM code_uses u WHERE u.code = c.code) AS used FROM access_codes c WHERE c.scope = '${scope}' ORDER BY c.created_at DESC LIMIT 100`),
+    next: db.prepare(`SELECT w.roblox_id FROM ${W} w WHERE NOT EXISTS (SELECT 1 FROM ${A} a WHERE a.roblox_id = w.roblox_id) ORDER BY w.pos LIMIT ?`),
+    list: db.prepare(`SELECT w.pos, w.roblox_id, u.username, w.joined_at, a.via, a.granted_at FROM ${W} w LEFT JOIN users u ON u.roblox_id = w.roblox_id LEFT JOIN ${A} a ON a.roblox_id = w.roblox_id ORDER BY w.pos LIMIT 500`),
   };
   const now = () => Date.now();
   const isAdmin = id => ADMINS.has(Number(id));
@@ -57,7 +59,7 @@ function create({ db, tx }) {
     const code = `TB-${body.slice(0, 5)}-${body.slice(5)}`;
     tx(() => {
       const row = q.code.get(code);
-      if (!row) throw new WaitError('That access code does not exist. Check it and try again.');
+      if (!row || (row.scope || 'slots') !== scope) throw new WaitError('That access code does not exist. Check it and try again.');
       if (hasAccess(id)) return;
       if (!q.useCode.run(code).changes) throw new WaitError('That access code has been used up.');
       q.addUse.run(code, id, now()); q.join.run(id, now()); q.grant.run(id, 'code', now());
@@ -83,7 +85,7 @@ function create({ db, tx }) {
   }
   function revoke(admin, id) { if (!isAdmin(admin)) throw new WaitError('Only admins can do that.', 403); q.revoke.run(Number(id)); return { ok: true }; }
 
-  return { status, join, redeem, makeCodes, grantNext, adminView, revoke, hasAccess, isAdmin, WaitError };
+  return { scope, status, join, redeem, makeCodes, grantNext, adminView, revoke, hasAccess, isAdmin, WaitError };
 }
 
 module.exports = { create };

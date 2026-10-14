@@ -3,6 +3,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const os = require('node:os'), path = require('node:path');
+process.env.SITE_WAITLIST = 'off';
 process.env.GAME_WEBHOOK_SECRET = 'test-secret-0123456789abcdef';
 process.env.DB_PATH = path.join(os.tmpdir(), `tb-provider-${process.pid}.db`);
 process.env.LUCKYSTREAK_API_URL = 'https://ls.example/api';

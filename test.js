@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 
 const SECRET = 'test-secret-0123456789abcdef';
 const dbPath = path.join(os.tmpdir(), `tb-test-${process.pid}.db`);
+process.env.SITE_WAITLIST = 'off';
 process.env.GAME_WEBHOOK_SECRET = SECRET;
 process.env.DB_PATH = dbPath;
 process.env.PORT = '0';

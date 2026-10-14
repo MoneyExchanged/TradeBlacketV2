@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const os = require('node:os'), path = require('node:path'), fs = require('node:fs');
 const dbPath = path.join(os.tmpdir(), `tb-bridge-${process.pid}.db`);
+process.env.SITE_WAITLIST = 'off';
 process.env.GAME_WEBHOOK_SECRET = 'test-secret-0123456789abcdef';
 process.env.DB_PATH = dbPath;
 process.env.ROBLOX_OPEN_CLOUD_KEY = 'x'.repeat(40);

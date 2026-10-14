@@ -59,6 +59,10 @@ against a fake data store.
 - **Lobby and launch:** `GET /api/games` lists games (cached 10 minutes); `POST /api/games/launch` creates a single-use player session and asks LuckyStreak for the game link, which opens full screen.
 - **When LuckyStreak's API document arrives:** match their field names in `FIELDS` and the answer shape in `reply()` in `provider.js`, and set the launch and games paths. Then give LuckyStreak the wallet URL `https://<your domain>/api/provider/luckystreak/` and run `npm run test:provider`.
 
+## Site waitlist
+
+The whole site is invite-only while `SITE_WAITLIST` is on (the default). Players sign in with Roblox first, then see a waitlist screen instead of the site: they join, keep the place they joined in (#1 is first in), and get in when an admin lets the next players in or with a site access code. The server enforces this too: deposits, games, cases, selling and listing are refused for players without access. Withdrawals always work, so nobody's Rodux or items are ever stuck. Admins always have access and get an Admin page (Account → Admin) with Site and Slots tabs. Site codes and Slots codes are separate. Set `SITE_WAITLIST=off` to open the site to everyone.
+
 ## Slots waitlist
 
 Slots are closed for now (`waitlist.js`). Players join a waitlist and keep the place they joined in; the first to join is #1. They get in when an admin lets the next players in, or straight away with an access code (`TB-XXXXX-XXXXX`). Admins are the Roblox accounts in `ADMIN_ROBLOX_IDS` (default: the owner, 496295513); an admin sees an Admin section on the Slots page to make codes, let players in and remove access. Studio games can only be launched by players with access.

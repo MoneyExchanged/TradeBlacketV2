@@ -225,7 +225,7 @@ function me(req, res) {
     deposited: u.deposited, withdrawn: u.withdrawn, withdrawable: withdrawable(u),
     legal: { tos: u.tos_version === LEGAL.tos, cds: u.cds_version === LEGAL.cds, versions: LEGAL },
     limits: limits.status(u.roblox_id), itemValue: items.siteItemValue(u.roblox_id),
-    studio: provider.recent(u.roblox_id), slots: waitlist.status(u.roblox_id),
+    studio: provider.recent(u.roblox_id), slots: waitlist.status(u.roblox_id), site: { gate: SITE_GATE, access: siteOk(u.roblox_id) },
     walletId: social.walletId(u.roblox_id), tier: (social.tier(u.roblox_id).catch(() => {}), u.tier || null), admin: waitlist.isAdmin(u.roblox_id),
     // in-game transfers and website (offline) transfers together, newest first
     transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id))
@@ -242,6 +242,7 @@ function logout(req, res) {
 /* ---------- offline transfers (website <-> Trade Empire save, through Roblox Open Cloud) ---------- */
 // Deposits need the Deduction Service accepted; everything except withdrawals respects limits.
 function guard(robloxId, kind, amount) {
+  if (kind !== 'withdraw' && !siteOk(robloxId)) return SITE_CLOSED;
   const u = q.user.get(robloxId);
   if ((kind === 'deposit' || kind === 'items') && (!u || u.cds_version !== LEGAL.cds)) return 'Please read and accept the Trade Empire Currency Deduction Service first.';
   if (kind !== 'withdraw' && (!u || u.tos_version !== LEGAL.tos)) return 'Please accept the Terms of Service and License Agreement first.';
@@ -255,18 +256,28 @@ const items = require('./items.js').create({ db, tx, log: (...a) => log(...a), g
 const limits = require('./limits.js').create({ db, tx });
 // Studio games (LuckyStreak) on the Rodux balance, through a signed seamless wallet. Off until configured.
 const waitlist = require('./waitlist.js').create({ db, tx });
+// The whole site is invite-only while SITE_WAITLIST is on (the default): signed-in players join the
+// site waitlist and get in when an admin lets them in or with a site access code.
+const siteList = require('./waitlist.js').create({ db, tx, scope: 'site' });
+const SITE_GATE = String(process.env.SITE_WAITLIST || 'on').toLowerCase() !== 'off';
+const siteOk = id => !SITE_GATE || siteList.hasAccess(id);
+const SITE_CLOSED = 'TradeBlacket is invite-only right now. Join the waitlist or enter an access code.';
 async function waitlistRoute(req, res, p) {
-  if (req.method === 'GET' && p === '/api/waitlist') { const s = sessionUser(req); return send(res, 200, waitlist.status(s && s.user ? s.user.roblox_id : null)); }
+  // /api/site-waitlist/* and /api/admin/site/* use the site list; the rest use the slots list.
+  const site = p.startsWith('/api/site-waitlist') || p.startsWith('/api/admin/site/');
+  const L = site ? siteList : waitlist;
+  p = p.replace('/api/site-waitlist', '/api/waitlist').replace('/api/admin/site/', '/api/admin/');
+  if (req.method === 'GET' && p === '/api/waitlist') { const s = sessionUser(req); const st = L.status(s && s.user ? s.user.roblox_id : null); if (site) { st.gate = SITE_GATE; if (!SITE_GATE) st.access = true; } return send(res, 200, st); }
   const u = authed(req, res); if (!u) return;
   const b = (await readJson(req)) || {};
   try {
-    if (req.method === 'POST' && p === '/api/waitlist/join') return send(res, 200, waitlist.join(u.roblox_id));
-    if (req.method === 'POST' && p === '/api/waitlist/redeem') return send(res, 200, waitlist.redeem(u.roblox_id, b.code));
-    if (req.method === 'GET' && p === '/api/admin/waitlist') return send(res, 200, waitlist.adminView(u.roblox_id));
-    if (req.method === 'POST' && p === '/api/admin/codes') return send(res, 200, waitlist.makeCodes(u.roblox_id, b.count, b.uses, b.note));
-    if (req.method === 'POST' && p === '/api/admin/grant') return send(res, 200, waitlist.grantNext(u.roblox_id, b.count));
-    if (req.method === 'POST' && p === '/api/admin/revoke') return send(res, 200, waitlist.revoke(u.roblox_id, b.robloxId));
-  } catch (e) { if (e instanceof waitlist.WaitError) return send(res, e.code, { error: e.message }); throw e; }
+    if (req.method === 'POST' && p === '/api/waitlist/join') return send(res, 200, L.join(u.roblox_id));
+    if (req.method === 'POST' && p === '/api/waitlist/redeem') return send(res, 200, L.redeem(u.roblox_id, b.code));
+    if (req.method === 'GET' && p === '/api/admin/waitlist') return send(res, 200, L.adminView(u.roblox_id));
+    if (req.method === 'POST' && p === '/api/admin/codes') return send(res, 200, L.makeCodes(u.roblox_id, b.count, b.uses, b.note));
+    if (req.method === 'POST' && p === '/api/admin/grant') return send(res, 200, L.grantNext(u.roblox_id, b.count));
+    if (req.method === 'POST' && p === '/api/admin/revoke') return send(res, 200, L.revoke(u.roblox_id, b.robloxId));
+  } catch (e) { if (e instanceof L.WaitError) return send(res, e.code, { error: e.message }); throw e; }
   return send(res, 404, { error: 'Not found' });
 }
 const GBX = require('./gamebridge.js');
@@ -293,6 +304,7 @@ async function gamesLaunch(req, res) {
   const u = authed(req, res); if (!u) return;
   const b = (await readJson(req)) || {};
   if (!b.gameId || String(b.gameId).length > 100) return send(res, 400, { error: 'Pick a game.' });
+  if (!siteOk(u.roblox_id)) return send(res, 403, { error: SITE_CLOSED, siteWaitlist: true });
   if (!waitlist.hasAccess(u.roblox_id)) return send(res, 403, { error: 'Slots are invite-only for now. Join the waitlist or enter an access code.', waitlist: true });
   try { return send(res, 200, await provider.launch(u.roblox_id, u.username, b.gameId, !!b.mobile)); }
   catch (e) {
@@ -330,6 +342,7 @@ async function itemsRoute(req, res, p) {
     if (p === '/api/flips/create') return await run(res, () => items.flipCreate(id, name, b.uids, b.side));
     if (p === '/api/flips/join') return await run(res, () => items.flipJoin(id, name, b.id, b.uids));
     if (p === '/api/items/sell-quote') return await run(res, () => items.sellQuote(id, b.uids));
+    if ((p === '/api/items/sell' || p === '/api/items/list') && !siteOk(id)) return send(res, 403, { error: SITE_CLOSED, siteWaitlist: true });
     if (p === '/api/items/sell') return await run(res, () => { const u = q.user.get(id); if (!u || u.tos_version !== LEGAL.tos) throw new bridge.BridgeError('Please accept the Terms of Service and License Agreement first.', 403); return items.sellToHouse(id, b.uids); });
     if (p === '/api/items/list') return await run(res, () => items.list(id, b.uid, b.price));
     if (p === '/api/items/unlist') return await run(res, () => items.unlist(id, b.id));
@@ -460,7 +473,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && p === '/api/games') { try { return send(res, 200, await provider.games()); } catch (e) { log('games', e.message); return send(res, 200, { enabled: true, games: [], error: 'Games are loading. Try again shortly.' }); } }
     if (req.method === 'POST' && p === '/api/games/launch') return await gamesLaunch(req, res);
-    if (p === '/api/waitlist' || p.startsWith('/api/waitlist/') || p.startsWith('/api/admin/')) return await waitlistRoute(req, res, p);
+    if (p === '/api/waitlist' || p.startsWith('/api/waitlist/') || p === '/api/site-waitlist' || p.startsWith('/api/site-waitlist/') || p.startsWith('/api/admin/')) return await waitlistRoute(req, res, p);
     if (p === '/api/profile' || p.startsWith('/api/profile/') || p === '/api/support' || p.startsWith('/api/support/')) return await socialRoute(req, res, p);
     if (req.method === 'POST' && p === '/api/auth/start') return await authStart(req, res);
     if (req.method === 'POST' && p === '/api/auth/verify') return await authVerify(req, res);
