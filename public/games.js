@@ -436,6 +436,9 @@ PAGES.cups=el=>{
     const a=getBet();if(busy||!take(a))return;busy=true;state={bet:a};act.disabled=true;lockBet(true,el);$$('#cs button').forEach(b=>b.disabled=true);$('#res').innerHTML='';
     ball=Math.floor(rnd()*3);setBall(ball);
     st.textContent='Watch the ball';cups[ball].el.classList.add('lift');await sleep(1000);if(!state)return;cups[ball].el.classList.remove('lift');await sleep(450);
+    // The ball leaves the page once the cup is down, so nothing (hovering, zooming, inspecting the
+    // page) can show where it is until the player has picked.
+    setBall(-1);
     const[n,ms]=SP[speed];st.textContent='Shuffling…';
     for(let k=0;k<n;k++){
       if(!state)return;
@@ -449,7 +452,7 @@ PAGES.cups=el=>{
   }
   async function choose(i){
     if(!state||!state.picking)return;state.picking=false;cups.forEach(c=>{c.el.classList.remove('pick');c.el.onclick=null});
-    cups[i].el.classList.add('lift');const win=i===ball,p=win?r2(state.bet*2.88):0;
+    setBall(ball);cups[i].el.classList.add('lift');const win=i===ball,p=win?r2(state.bet*2.88):0;
     await sleep(450);if(!win)cups[ball].el.classList.add('lift');
     if(win)pay(p);settle('cups',state.bet,win?2.88:0,p);
     st.textContent=win?'Found it':'Not that one';$('#res').innerHTML=win?resultBox('2.88×','+'+fmt(p)+' Rodux'):'';

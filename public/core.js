@@ -488,7 +488,7 @@ $('#bal').textContent=fmt(S.bal);
 const NAVDEF=[
   ['Play',[['home','Home','home'],['cases','Cases','cases'],['battles','Case Battles','battles','live'],['upgrader','Upgrader','upgrader'],['flip','Limited Flip','coinflip','new'],['predictions','Predictions','predictions','new'],['stocks','Stocks','stocks','new'],['market','Marketplace','market']]],
   ['Casino',[['slots','Slots','slots','wait'],...ORIG.map(k=>[k,GAMES[k].n,k,['baccarat','limbo','hilo','keno','wheel'].includes(k)?'new':''])]],
-  ['Account',[['wallet','Wallet','tag'],['refer','Refer a friend','rewards'],['tradeempire','Trade Empire','trend'],['prefs','Settings','edit'],['support','Support','chat'],['docs','Docs','news'],['settings','Responsible play','shield'],['rewards','Rewards','rewards'],['inventory','Inventory','inventory'],['profile','Profile','profile'],['news','News','news']]]
+  ['Account',[['wallet','Wallet','tag'],['refer','Refer a friend','rewards'],['giftcard','Gift card','gem'],['tradeempire','Trade Empire','trend'],['prefs','Settings','edit'],['support','Support','chat'],['docs','Docs','news'],['settings','Responsible play','shield'],['rewards','Rewards','rewards'],['inventory','Inventory','inventory'],['profile','Profile','profile'],['news','News','news']]]
 ];
 $('#nav').innerHTML=NAVDEF.map(([h,items])=>`<h6>${h}</h6>`+items.map(([k,l,icn,t])=>`<button data-go="${k}" title="${l}">${ic(icn,19)}<span>${l}</span>${t?`<i class="tg ${t}">${t==='live'?'Live':t==='wait'?'Waitlist':'New'}</i>`:''}</button>`).join('')).join('');
 $('#burger').onclick=()=>$('#app').classList.toggle('nav-open');

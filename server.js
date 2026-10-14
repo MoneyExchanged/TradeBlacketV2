@@ -240,7 +240,7 @@ function me(req, res) {
     banned: ban ? { reason: ban.reason, at: ban.created_at, kind: ban.kind || 'ban', until: ban.expires_at || null } : null, referral: { code: referrals.codeFor(u.roblox_id), reward: referrals.REWARD },
     walletId: social.walletId(u.roblox_id), tier: (social.tier(u.roblox_id).catch(() => {}), u.tier || null), admin: waitlist.isAdmin(u.roblox_id),
     // in-game transfers and website (offline) transfers together, newest first
-    transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id)).concat(referrals.payouts(u.roblox_id))
+    transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id)).concat(referrals.payouts(u.roblox_id)).concat(gifts.payouts(u.roblox_id))
       .sort((a, b) => b.created_at - a.created_at).slice(0, 25),
   });
 }
@@ -294,6 +294,9 @@ async function waitlistRoute(req, res, p) {
   const b = (await readJson(req)) || {};
   try {
     if (req.method === 'GET' && p === '/api/admin/bans') return send(res, 200, security.adminList(u.roblox_id));
+    if (req.method === 'GET' && p === '/api/admin/giftcards') return send(res, 200, gifts.adminView(u.roblox_id));
+    if (req.method === 'POST' && p === '/api/admin/giftcards') return send(res, 200, gifts.make(u.roblox_id, b));
+    if (req.method === 'POST' && p === '/api/admin/giftcards/void') return send(res, 200, gifts.voidCard(u.roblox_id, b.code));
     if (req.method === 'GET' && (p === '/api/admin/search' || p === '/api/admin/player')) {
       if (!waitlist.isAdmin(u.roblox_id)) return send(res, 403, { error: 'Only admins can do that.' });
       const sp = new URL(req.url, 'http://x').searchParams;
@@ -320,7 +323,7 @@ async function waitlistRoute(req, res, p) {
     if (req.method === 'POST' && p === '/api/admin/codes') return send(res, 200, L.makeCodes(u.roblox_id, b.count, b.uses, b.note));
     if (req.method === 'POST' && p === '/api/admin/grant') return send(res, 200, L.grantNext(u.roblox_id, b.count));
     if (req.method === 'POST' && p === '/api/admin/revoke') return send(res, 200, L.revoke(u.roblox_id, b.robloxId));
-  } catch (e) { if (e instanceof L.WaitError || e instanceof security.SecError || e instanceof account.AccountError) return send(res, e.code, { error: e.message }); throw e; }
+  } catch (e) { if (e instanceof L.WaitError || e instanceof security.SecError || e instanceof account.AccountError || e instanceof gifts.GiftError) return send(res, e.code, { error: e.message }); throw e; }
   return send(res, 404, { error: 'Not found' });
 }
 const GBX = require('./gamebridge.js');
@@ -335,6 +338,9 @@ const account = require('./account.js').create({
 });
 // Everything a player has done, for staff.
 const plog = require('./playerlog.js').create({ db, isAdmin: id => waitlist.isAdmin(id), security, items, GB: GBX, social, account });
+// Gift cards ($5 / $10 / $100 / $500), made by admins and redeemed for Rodux at the game's Rodux price.
+const gifts = require('./giftcards.js').create({ db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), universe: GBX.CFG.universe || 10108739296,
+  isBanned: id => security.isBanned(id), siteOk: id => siteOk(id), note: (...a) => plog.add(...a) });
 async function socialRoute(req, res, p) {
   const s = sessionUser(req), me = s && s.user ? s.user.roblox_id : null;
   try {
@@ -554,6 +560,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/auth/verify') return await authVerify(req, res);
     if (req.method === 'POST' && p === '/api/auth/logout') return logout(req, res);
     if (req.method === 'GET' && p === '/api/me') return me(req, res);
+    if (req.method === 'GET' && p === '/api/rates') { const r = gifts.rate(); return send(res, 200, { roduxPerUsd: r.roduxPerUsd, roduxPerRobux: r.roduxPerRobux, robuxPerUsd: r.robuxPerUsd, values: r.values, source: r.source }); }
+    if (req.method === 'POST' && p === '/api/giftcards/redeem') {
+      const u = authed(req, res); if (!u) return;
+      try { security.limit(req, 'gift', 10, 10 * 60e3); const b = (await readJson(req)) || {}; return send(res, 200, gifts.redeem(u.roblox_id, b.code)); }
+      catch (e) { if (e instanceof gifts.GiftError || e instanceof security.SecError) return send(res, e.code, { error: e.message }); throw e; }
+    }
     if (req.method === 'GET' && p === '/api/account') { const u = authed(req, res); if (!u) return; return send(res, 200, account.forPlayer(await account.snapshot(u.roblox_id))); }
     if (req.method === 'GET' && p === '/api/referrals') { const u = authed(req, res); if (!u) return; return send(res, 200, referrals.view(u.roblox_id)); }
     if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true, storage: CFG.db.startsWith('/data') || (process.env.RAILWAY_VOLUME_MOUNT_PATH && CFG.db.startsWith(process.env.RAILWAY_VOLUME_MOUNT_PATH)) ? 'volume' : 'local', offlineTransfers: bridge.enabled(), studioGames: provider.enabled() });

@@ -102,6 +102,7 @@ function create({ db, isAdmin, security, items, GB, social, account }) {
       profile: a => ({ cat: 'account', title: 'Edited their profile', note: (a.data.fields || []).join(', ') }),
       limits: a => ({ cat: 'account', title: 'Changed responsible-play limits', note: (a.data.fields || []).join(', ') }),
       ticket: a => ({ cat: 'support', title: `Opened ticket ${a.data.id}`, ref: a.data.id, note: a.data.category }),
+      gift: a => ({ cat: 'money', title: `Redeemed a $${a.data.usd} gift card`, amount: a.data.rodux, method: a.data.withdrawable ? 'Gift card, can be withdrawn' : 'Gift card, bonus Rodux (cannot be withdrawn)', ref: a.data.ref, status: 'ok' }),
     };
     for (const a of acts) { const f = ACT[a.kind]; if (f) push({ at: a.at, kind: a.kind, ...f(a) }); }
 

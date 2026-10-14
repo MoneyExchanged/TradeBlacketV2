@@ -74,6 +74,14 @@ The whole site is invite-only while `SITE_WAITLIST` is on (the default). Players
 - Staff actions (from a ticket or Admin, then Players): warn, suspend for 1 to 90 days, kick (sign out everywhere), ban, terminate, unban, let in, remove access, note. The player sees every action except notes, in the ticket and on their standing. Banned, suspended and terminated players can still sign in to withdraw and to use Support.
 - **tradeblacket.com/tradeempire** shows the player their own Trade Empire account: standing bar and violation history, value over time, stats and their most valuable limiteds.
 
+## Gift cards and money display
+
+`giftcards.js`. Admins (Admin, then Gift cards) make $5, $10, $100 or $500 cards (`TBG-XXXX-XXXX-XXXX`, single use, optional expiry and a note for the creator or giveaway) and hand them to content creators. Players cannot buy them; they redeem a code on the Gift card page.
+
+A card pays its dollar value in Rodux at the moment it is redeemed: the game's Rodux developer products are read from Roblox every 6 hours (base price, before the Premium discount), the median Rodux per Robux is taken, and multiplied by `ROBUX_PER_USD` (default 80, from 400 Robux for $4.99). On 15 October 2026 that is 143.27 Rodux per Robux, so 11,461 Rodux per dollar. By default card Rodux is bonus Rodux (plays on the site, cannot be withdrawn); an admin can make a card withdrawable.
+
+Every Rodux amount on the site shows its US dollar and Robux value on hover, and players choose what the top-bar balance shows: Rodux, US dollars, Robux or the value of their limiteds (Settings, or the balance popover). `GET /api/rates` returns the current rate.
+
 ## Player lookup for staff
 
 `playerlog.js`, shown in Admin, then Players. Staff search by Roblox name, Roblox id, wallet ID, ticket id or referral code (an empty search lists recently active players). A player's page has the account, totals and a log of everything they did:

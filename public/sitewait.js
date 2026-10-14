@@ -96,11 +96,12 @@ function swChart(cv){
 PAGES.admin=(el,tab)=>{
   const isAdmin=(WAPI.me&&WAPI.me.admin)||(SW.s&&SW.s.admin);
   if(!isAdmin){el.innerHTML=`<div class="empty"><h3>Admins only</h3><p>This page is for the TradeBlacket team.</p></div>`;return}
-  const tb=String(tab||''),t=['slots','bans'].includes(tb)?tb:tb.startsWith('players')?'players':'site';
+  const tb=String(tab||''),t=['slots','bans','gifts'].includes(tb)?tb:tb.startsWith('players')?'players':'site';
   el.innerHTML=`<div class="page-h"><div><div class="crumb"><button data-go="home">Home</button> / Admin</div><h2>Admin</h2><p>Let players in, make access codes and see who is waiting.</p></div></div>
-    <div class="mk-tabs lx-seg adm-seg" style="--n:4;--i:${['site','slots','bans','players'].indexOf(t)}"><button data-go="admin" data-p="site" class="${t==='site'?'on':''}">Site waitlist</button><button data-go="admin" data-p="slots" class="${t==='slots'?'on':''}">Slots waitlist</button><button data-go="admin" data-p="bans" class="${t==='bans'?'on':''}">Bans</button><button data-go="admin" data-p="players" class="${t==='players'?'on':''}">Players</button><i></i></div>
+    <div class="mk-tabs lx-seg adm-seg" style="--n:5;--i:${['site','slots','bans','players','gifts'].indexOf(t)}"><button data-go="admin" data-p="site" class="${t==='site'?'on':''}">Site waitlist</button><button data-go="admin" data-p="slots" class="${t==='slots'?'on':''}">Slots waitlist</button><button data-go="admin" data-p="bans" class="${t==='bans'?'on':''}">Bans</button><button data-go="admin" data-p="players" class="${t==='players'?'on':''}">Players</button><button data-go="admin" data-p="gifts" class="${t==='gifts'?'on':''}">Gift cards</button><i></i></div>
     <section class="wl-admin" id="adm"></section>`;
   if(t==='players'){admPlayersTab($('#adm',el),tb.split(':')[1]||'');return}
+  if(t==='gifts'){admGifts($('#adm',el));return}
   if(WAPI.live)(t==='bans'?drawBans($('#adm',el)):drawAdmin($('#adm',el),t));else $('#adm',el).innerHTML=`<div class="empty"><h3>Admin tools run on the live site</h3><p>Letting players in and making codes need the TradeBlacket server.</p></div>`;
 };
 
