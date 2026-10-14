@@ -42,11 +42,11 @@ function create({ db, tx, secret, isAdmin, log = () => {} }) {
   const h = (kind, v) => crypto.createHmac('sha256', secret).update(kind + ':' + v).digest('hex').slice(0, 40);
 
   /* ---------- where a request came from ---------- */
-  // Railway's edge puts the visitor's address in X-Real-IP and at the end of X-Forwarded-For.
-  // Anything earlier in X-Forwarded-For was written by the visitor and is ignored.
+  // Railway's edge sets X-Real-IP to the visitor's address and rewrites X-Forwarded-For so it starts
+  // with it; a visitor's own copies of either header are replaced (checked on the live site).
   function ip(req) {
     let a = String(req.headers['x-real-ip'] || '').trim();
-    if (!a) { const f = String(req.headers['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean); a = f[f.length - 1] || ''; }
+    if (!a) a = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
     if (!a) a = (req.socket && req.socket.remoteAddress) || '';
     a = a.replace(/^::ffff:/, '');
     if (a.includes(':')) a = a.split(':').slice(0, 4).join(':') + '::/64';

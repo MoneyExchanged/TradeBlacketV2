@@ -73,7 +73,7 @@ The whole site is invite-only while `SITE_WAITLIST` is on (the default). Players
 - Admins are never banned. Admin → Bans lists bans with the account each one is linked to, and admins can ban by name or id and unban.
 - A banned account can sign in and withdraw its own Rodux and limiteds, and nothing else.
 
-The client address comes from `X-Real-IP` (set by Railway's edge), else the last `X-Forwarded-For` entry. Admins can check what the server sees at `GET /api/admin/netcheck`.
+The client address comes from `X-Real-IP`, which Railway's edge sets and a visitor cannot override, else the first `X-Forwarded-For` entry. Admins can check what the server sees at `GET /api/admin/netcheck`.
 
 ## Refer a friend
 

@@ -35,7 +35,7 @@ const D = c => c.repeat(32).slice(0, 32);
   assert.equal(sec.onSignIn(1, req('1.1.1.1', D('z'), 'zz'.repeat(16)), true), null); assert.equal(sec.isBanned(1), false); ok('admins are never banned, even on a shared network');
   assert.equal(sec.onSignIn(10, req('1.1.1.1', D('a'), 'aa'.repeat(16)), false), null); assert.equal(sec.isBanned(10), false); ok('the original account keeps signing in from its own network and device');
   assert.equal(sec.shared(10, 1), true); assert.equal(sec.shared(10, 14), false); ok('shared() tells whether two accounts share a network or device');
-  assert.equal(sec.ip({ headers: { 'x-forwarded-for': '9.9.9.9, 7.7.7.7' }, socket: {} }), '7.7.7.7'); ok('a forged X-Forwarded-For entry is ignored');
+  assert.equal(sec.ip({ headers: { 'x-real-ip': '7.7.7.7', 'x-forwarded-for': '9.9.9.9' }, socket: {} }), '7.7.7.7'); assert.equal(sec.ip({ headers: { 'x-forwarded-for': '9.9.9.9, 10.1.1.1' }, socket: {} }), '9.9.9.9'); ok('the address comes from X-Real-IP, then the first X-Forwarded-For entry');
   assert.equal(sec.ip({ headers: { 'x-real-ip': '2001:db8:1:2:aaaa::1' }, socket: {} }), '2001:db8:1:2::/64'); ok('an IPv6 address counts by its /64');
   sec.adminUnban(1, 11); assert.equal(sec.isBanned(11), false); assert.throws(() => sec.adminUnban(10, 12), /admins/); ok('only admins unban');
   sec.adminBan(1, 'P14', 'test'); assert.equal(sec.isBanned(14), true); assert.throws(() => sec.adminBan(1, '1'), /cannot be banned/); ok('admins ban by name; admins cannot be banned');
