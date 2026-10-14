@@ -331,7 +331,7 @@ function readRaw(req) {
   });
 }
 async function readJson(req) { try { return JSON.parse((await readRaw(req)).toString('utf8')); } catch { return null; } }
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.md': 'text/plain; charset=utf-8' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.md': 'text/plain; charset=utf-8' };
 function serveStatic(req, res) {
   const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   let file = path.normalize(path.join(CFG.publicDir, url === '/' ? 'index.html' : url));
