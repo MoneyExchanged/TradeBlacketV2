@@ -32,12 +32,13 @@ async function syncMe(){
     // First time this browser sees this account: take the server's balance once, and mark the
     // history as seen so it is not counted a second time.
     const fresh=S.seenFor!==me.robloxId;
-    if(fresh){S.seenFor=me.robloxId;S.seenRefs=[];seen.clear();if(me.balance>0)pay(me.balance)}
+    if(fresh){S.seenFor=me.robloxId;S.seenRefs=[];seen.clear();if(me.balance>0)pay(me.balance);if(me.bonusLock>0)S.lock=Math.max(S.lock||0,me.bonusLock)}
     for(const t of me.transfers.slice().reverse()){
       if(t.status!=='ok'||!t.reference||seen.has(t.reference))continue;
       seen.add(t.reference);S.seenRefs.push(t.reference);
       if(fresh)continue;
-      if(t.kind==='deposit'){pay(t.amount);toast(`${fmt(t.amount)} Rodux arrived from Trade Empire`,'win')}
+      if(t.kind==='bonus'){bonus(t.amount);toast(`Referral reward: ${fmt(t.amount)} bonus Rodux`,'win')}
+      else if(t.kind==='deposit'){pay(t.amount);toast(`${fmt(t.amount)} Rodux arrived from Trade Empire`,'win')}
       else{setBal(S.bal-t.amount);toast(`${fmt(t.amount)} Rodux went back to Trade Empire`,'gold')}
     }
     S.seenRefs=S.seenRefs.slice(-200);save();
@@ -53,7 +54,7 @@ function teState(){
 function addTx(t){S.tx=S.tx||[];t.id=uid();t.t=Date.now();S.tx.unshift(t);S.tx.length=Math.min(S.tx.length,60);save();return t}
 const txRef=k=>(k==='in'?'TBD-':'TBW-')+uid().slice(0,5).toUpperCase()+uid().slice(0,5).toUpperCase();
 function wState(){
-  if(WAPI.live&&WAPI.me){const m=WAPI.me;return{deposited:m.deposited,withdrawn:m.withdrawn,canBack:Math.max(0,Math.min(S.bal-(S.lock||0),m.withdrawable)),tx:m.transfers.map(t=>({dir:t.kind==='deposit'?'in':'out',amt:t.amount,status:t.status==='ok'?'Completed':'Refused',ref:t.reference||'',reason:t.reason,t:t.created_at}))}}
+  if(WAPI.live&&WAPI.me){const m=WAPI.me;return{deposited:m.deposited,withdrawn:m.withdrawn,canBack:Math.max(0,Math.min(S.bal-(S.lock||0),m.withdrawable)),tx:m.transfers.map(t=>({dir:t.kind==='withdraw'?'out':'in',amt:t.amount,status:t.status==='ok'?'Completed':'Refused',ref:t.reference||'',reason:t.reason,t:t.created_at}))}}
   const te=teState();
   return{deposited:te.dep,withdrawn:te.wd,canBack:Math.max(0,Math.floor(Math.min(S.bal-(S.lock||0),te.dep-te.wd))),
     tx:(S.tx||[]).filter(t=>t.kind==='rodux').map(t=>({dir:t.dir,amt:t.amt,status:t.status,ref:t.code,t:t.t}))};

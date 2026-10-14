@@ -108,11 +108,11 @@ function showGate(mode='up'){
   async function s3(){
     body().innerHTML=`${stepper(3)}<div class="center"><div class="spin"></div><h2>Checking ${esc(name)}</h2><p class="muted">Looking for your phrase in the About section…</p></div>`;
     if(tok){
-      let j={};try{const r=await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mode==='up'?{token:tok,acceptTos:LEGAL_V.tos}:{token:tok})});j=await r.json();if(!r.ok)throw 0}
+      let j={};try{const r=await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mode==='up'?{token:tok,acceptTos:LEGAL_V.tos,ref:TBDEV.ref()}:{token:tok,ref:TBDEV.ref()})});j=await r.json();if(!r.ok)throw 0}
       catch{if(!g.innerHTML)return;const msg=j.error||'Could not reach TradeBlacket. Try again.';if(/expired/i.test(msg)){s1();$('#er',g).textContent=msg;return}
         body().innerHTML=`<div class="center"><h2>Not yet</h2><p class="muted" style="margin:0 0 20px">${esc(msg)}</p><div class="mstack"><button class="cta" id="again">Verify again</button><button class="cta ghost" id="bk2">Back</button></div></div>`;
         $('#again',g).onclick=s3;$('#bk2',g).onclick=s1;return}
-      syncMe();
+      if(j.isNew)TBDEV.clearRef();syncMe();
     }else await sleep(1600);
     if(!g.innerHTML)return;
     const fresh=mode==='up';

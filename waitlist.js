@@ -13,7 +13,7 @@ const norm = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 class WaitError extends Error { constructor(msg, code = 400) { super(msg); this.code = code; } }
 
-function create({ db, tx, scope = 'slots' }) {
+function create({ db, tx, scope = 'slots', blocked = () => false }) {
   const W = scope === 'site' ? 'site_waitlist' : 'waitlist', A = scope === 'site' ? 'site_access' : 'slot_access';
   db.exec(`CREATE TABLE IF NOT EXISTS ${W} (pos INTEGER PRIMARY KEY AUTOINCREMENT, roblox_id INTEGER NOT NULL UNIQUE, joined_at INTEGER NOT NULL)`);
   db.exec(`CREATE TABLE IF NOT EXISTS ${A} (roblox_id INTEGER PRIMARY KEY, via TEXT NOT NULL, granted_at INTEGER NOT NULL)`);
@@ -40,7 +40,9 @@ function create({ db, tx, scope = 'slots' }) {
   };
   const now = () => Date.now();
   const isAdmin = id => ADMINS.has(Number(id));
-  const hasAccess = id => isAdmin(id) || !!q.access.get(id);
+  // A banned player (blocked) never has access and cannot join or redeem.
+  const hasAccess = id => isAdmin(id) || (!blocked(id) && !!q.access.get(id));
+  const BANNED = 'This account is banned, so it cannot join the waitlist.';
 
   // A player's place. "place" is the order they joined in; "ahead" is how many still wait before them.
   function status(id) {
@@ -52,9 +54,10 @@ function create({ db, tx, scope = 'slots' }) {
       waiting: q.waiting.get().n, total: q.total.get().n, admin: id ? isAdmin(id) : false,
     };
   }
-  function join(id) { q.join.run(id, now()); return status(id); }
+  function join(id) { if (blocked(id) && !isAdmin(id)) throw new WaitError(BANNED, 403); q.join.run(id, now()); return status(id); }
   function redeem(id, raw) {
     const c = norm(raw), body = c.length === 12 && c.startsWith('TB') ? c.slice(2) : c;
+    if (blocked(id) && !isAdmin(id)) throw new WaitError(BANNED, 403);
     if (body.length !== 10) throw new WaitError('Enter the full access code, like TB-ABCDE-FGHJK.');
     const code = `TB-${body.slice(0, 5)}-${body.slice(5)}`;
     tx(() => {
@@ -76,7 +79,7 @@ function create({ db, tx, scope = 'slots' }) {
   function grantNext(admin, count) {
     if (!isAdmin(admin)) throw new WaitError('Only admins can do that.', 403);
     count = Math.min(1000, Math.max(1, Math.floor(Number(count) || 1)));
-    const ids = q.next.all(count).map(r => r.roblox_id); tx(() => ids.forEach(r => q.grant.run(r, 'waitlist', now())));
+    const ids = q.next.all(count * 2 + 50).map(r => r.roblox_id).filter(r => !blocked(r)).slice(0, count); tx(() => ids.forEach(r => q.grant.run(r, 'waitlist', now())));
     return { granted: ids.length };
   }
   function adminView(admin) {

@@ -63,6 +63,22 @@ against a fake data store.
 
 The whole site is invite-only while `SITE_WAITLIST` is on (the default). Players sign in with Roblox first, then see a waitlist screen instead of the site: they join, keep the place they joined in (#1 is first in), and get in when an admin lets the next players in or with a site access code. The server enforces this too: deposits, games, cases, selling and listing are refused for players without access. Withdrawals always work, so nobody's Rodux or items are ever stuck. Admins always have access and get an Admin page (Account → Admin) with Site and Slots tabs. Site codes and Slots codes are separate. Set `SITE_WAITLIST=off` to open the site to everyone.
 
+## One account per player
+
+`security.js`. Every sign-in records one-way HMAC hashes (keyed with the server secret) of the network address (IPv6 by /64), a device id the browser keeps (cookie `tb_dev` and localStorage) and a hash of the device's hardware and browser traits, sent in the `X-TB-Device` header. Raw addresses and traits are never stored.
+
+- Sign-in attempts are rate limited per network (8 starts and 20 verifies per 10 minutes); access-code guesses too (10 per 10 minutes).
+- A new account that signs up from a network used by another account in the last 30 days, or from a device or hardware another account uses, is banned on the spot.
+- Two existing accounts seen on one device: the newer one is banned.
+- Admins are never banned. Admin → Bans lists bans with the account each one is linked to, and admins can ban by name or id and unban.
+- A banned account can sign in and withdraw its own Rodux and limiteds, and nothing else.
+
+The client address comes from `X-Real-IP` (set by Railway's edge), else the last `X-Forwarded-For` entry. Admins can check what the server sees at `GET /api/admin/netcheck`.
+
+## Refer a friend
+
+`referrals.js`. Every player has a code and link (`/?ref=CODE`). A friend who signs up with it is linked to them; the referrer gets `REFERRAL_REWARD` (default 450) Rodux once the friend has site access and has accepted the Terms, and neither is banned. Nothing is paid for a friend on the referrer's network, device or hardware. The reward is bonus Rodux (`bonus_lock`): it plays on the site but cannot be withdrawn, so referrals never create Rodux in Trade Empire.
+
 ## Slots waitlist
 
 Slots are closed for now (`waitlist.js`). Players join a waitlist and keep the place they joined in; the first to join is #1. They get in when an admin lets the next players in, or straight away with an access code (`TB-XXXXX-XXXXX`). Admins are the Roblox accounts in `ADMIN_ROBLOX_IDS` (default: the owner, 496295513); an admin sees an Admin section on the Slots page to make codes, let players in and remove access. Studio games can only be launched by players with access.
