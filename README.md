@@ -48,6 +48,17 @@ against a fake data store.
 - **Responsible play** (`limits.js`): screen time, reality checks, deposit caps, item caps, largest bet, loss limit, breaks and self-exclusion. Stricter changes apply now, looser ones after 24 hours. Withdrawals are never blocked. The loss limit uses the net the browser reports until games move to the server.
 - **Legal**: TradeBlacket is for players aged 18 and over (Terms version `2026-10-14.2`; existing players confirm their age and re-accept, and can always withdraw). Terms of Service, License Agreement and Trade Empire Currency Deduction Service live in `public/account.js`. Acceptance is stored per user (`tos_version`, `cds_version`). Have them reviewed by a lawyer.
 
+## Studio games (LuckyStreak)
+
+`provider.js` connects LuckyStreak's slots and casino games to the Rodux balance as a seamless wallet. It is switched off until the `LUCKYSTREAK_*` variables are set (see `.env.example`); until then the Slots page shows TradeBlacket's own slots.
+
+- **Wallet endpoints** LuckyStreak calls: `POST /api/provider/luckystreak/{balance,debit,credit,rollback}`. Each call must carry a valid Hawk header (shared id and key, 60-second clock window, single-use nonce, signed body). Optional IP allowlist: `LUCKYSTREAK_ALLOW_IPS`.
+- **Exactly once:** every transaction id is applied once and repeats get the first answer. A refund undoes a bet once; a refund that arrives before its bet blocks that bet. Wins can't be rolled back.
+- **Limits:** bets go through the Terms check, breaks, self-exclusion, the largest-bet limit and the daily loss limit (counted on the server for studio games).
+- **Withdrawals** stay capped at what a player deposited, whatever studio games pay out.
+- **Lobby and launch:** `GET /api/games` lists games (cached 10 minutes); `POST /api/games/launch` creates a single-use player session and asks LuckyStreak for the game link, which opens full screen.
+- **When LuckyStreak's API document arrives:** match their field names in `FIELDS` and the answer shape in `reply()` in `provider.js`, and set the launch and games paths. Then give LuckyStreak the wallet URL `https://<your domain>/api/provider/luckystreak/` and run `npm run test:provider`.
+
 ## Going live
 
 1. **Host it over https.** Roblox only calls https addresses. Any Node host works (Railway, Fly.io, Render, a VPS behind Caddy). Keep `tradeblacket.db` on a persistent disk and back it up.

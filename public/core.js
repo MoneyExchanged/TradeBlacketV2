@@ -66,7 +66,8 @@ const ICON={
   send:'<path d="M4 12l16-8-6 16-2.5-6.5z"/>',
   users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>',
   gem:'<path d="M7 4h10l4 5-9 11L3 9z"/><path d="M3 9h18M9 4l3 5 3-5"/>',
-  chev:'<path d="M9 6l6 6-6 6"/>'
+  chev:'<path d="M9 6l6 6-6 6"/>',
+  play:'<path d="M8 5.5v13l11-6.5z" fill="currentColor"/>'
 };
 const ic=(n,s=20,w=1.8)=>`<svg class="i" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]||''}</svg>`;
 const chip=(s=14)=>`<svg class="chip" width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="var(--gold)"/><circle cx="12" cy="12" r="8.6" fill="none" stroke="var(--chip-ink)" stroke-width="1.4" opacity=".55"/><path d="M9.3 17V7.2h3.4a2.9 2.9 0 0 1 .4 5.8l2.4 4" fill="none" stroke="var(--chip-ink)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;

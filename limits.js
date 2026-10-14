@@ -24,6 +24,8 @@ function create({ db, tx }) {
   const cols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
   if (!cols.includes('settings')) db.exec("ALTER TABLE users ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'");
   db.exec(`CREATE TABLE IF NOT EXISTS usage (roblox_id INTEGER NOT NULL, day TEXT NOT NULL, seconds INTEGER NOT NULL DEFAULT 0, net INTEGER NOT NULL DEFAULT 0, last INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (roblox_id, day))`);
+  // snet: the day's result in studio games, counted by the server itself (net is what the browser reports).
+  if (!db.prepare('PRAGMA table_info(usage)').all().some(c => c.name === 'snet')) db.exec('ALTER TABLE usage ADD COLUMN snet INTEGER NOT NULL DEFAULT 0');
   const q = {
     get: db.prepare('SELECT settings FROM users WHERE roblox_id = ?'),
     put: db.prepare('UPDATE users SET settings = ? WHERE roblox_id = ?'),
@@ -31,6 +33,7 @@ function create({ db, tx }) {
     ensure: db.prepare('INSERT OR IGNORE INTO usage (roblox_id, day) VALUES (?, ?)'),
     addTime: db.prepare('UPDATE usage SET seconds = seconds + ?, last = ? WHERE roblox_id = ? AND day = ?'),
     setNet: db.prepare('UPDATE usage SET net = ? WHERE roblox_id = ? AND day = ?'),
+    addSnet: db.prepare('UPDATE usage SET snet = snet + ? WHERE roblox_id = ? AND day = ?'),
     depRodux: db.prepare("SELECT COALESCE(SUM(amount),0) AS n FROM offline_transfers WHERE roblox_id = ? AND kind = 'deposit' AND status IN ('ok','staged') AND created_at >= ?"),
     depItems: db.prepare("SELECT COALESCE(SUM(value),0) AS n FROM item_moves WHERE roblox_id = ? AND kind = 'deposit' AND status IN ('ok','staged') AND created_at >= ?")
   };
@@ -77,11 +80,11 @@ function create({ db, tx }) {
     if ((s.selfExcludedUntil || 0) > t) lock = { reason: 'selfExclude', until: s.selfExcludedUntil };
     else if ((s.coolOffUntil || 0) > t) lock = { reason: 'coolOff', until: s.coolOffUntil };
     else if (s.dailyMinutes && u.seconds >= s.dailyMinutes * 60) lock = { reason: 'screenTime', until: startOfDay(t) + DAY };
-    else if (s.lossLimit && -u.net >= s.lossLimit) lock = { reason: 'lossLimit', until: startOfDay(t) + DAY };
+    else if (s.lossLimit && -(u.net + (u.snet || 0)) >= s.lossLimit) lock = { reason: 'lossLimit', until: startOfDay(t) + DAY };
     const dayStart = startOfDay(t);
     return {
       settings: { dailyMinutes: s.dailyMinutes || 0, reminderMinutes: s.reminderMinutes || 0, depositCap: s.depositCap || 0, itemCap: s.itemCap || 0, maxBet: s.maxBet || 0, lossLimit: s.lossLimit || 0, coolOffUntil: s.coolOffUntil || 0, selfExcludedUntil: s.selfExcludedUntil || 0 },
-      pending: s.pending || {}, usedSeconds: u.seconds, net: u.net, lock,
+      pending: s.pending || {}, usedSeconds: u.seconds, net: u.net + (u.snet || 0), lock,
       depositedToday: q.depRodux.get(id, dayStart).n, itemsToday: q.depItems.get(id, dayStart).n
     };
   }
@@ -93,11 +96,14 @@ function create({ db, tx }) {
       const until = new Date(st.lock.until).toUTCString();
       return { selfExclude: `You excluded yourself until ${until}.`, coolOff: `You are on a break until ${until}.`, screenTime: 'You reached your daily screen time limit. It resets at midnight UTC.', lossLimit: 'You reached your daily loss limit. It resets at midnight UTC.' }[st.lock.reason];
     }
+    if (kind === 'bet' && s.maxBet && amount > s.maxBet) return `That bet is above your largest-bet limit of ${s.maxBet.toLocaleString('en-US')} Rodux.`;
+    if (kind === 'bet' && s.lossLimit && amount > 0 && -st.net + amount > s.lossLimit) return `That bet could take you past your daily loss limit (${Math.max(0, s.lossLimit + st.net).toLocaleString('en-US')} Rodux left today).`;
     if (kind === 'deposit' && s.depositCap && st.depositedToday + amount > s.depositCap) return `That would go over your daily deposit limit of ${s.depositCap.toLocaleString('en-US')} Rodux (${Math.max(0, s.depositCap - st.depositedToday).toLocaleString('en-US')} left today).`;
     if (kind === 'items' && s.itemCap && st.itemsToday + amount > s.itemCap) return `That would go over your daily item deposit limit of ${s.itemCap.toLocaleString('en-US')} in value.`;
     return null;
   }
-  return { status, update, heartbeat, guard };
+  function addServerNet(id, delta) { const d = dayKey(now()); q.ensure.run(id, d); q.addSnet.run(Math.round(delta), id, d); }
+  return { status, update, heartbeat, guard, addServerNet };
 }
 
 module.exports = { create };

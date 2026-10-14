@@ -1343,3 +1343,31 @@ body:has(#modal .scrim) .balpop{display:none}
 .set-in em{font-style:normal;font-size:12.5px;color:var(--muted);flex:none;min-width:84px}
 .brk{display:flex;gap:8px;flex-wrap:wrap}
 @media (max-width:900px){.set-grid{grid-template-columns:1fr}}
+
+/* ---------- studio games (LuckyStreak) ---------- */
+.st-search{display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--dim);min-width:240px;flex:0 1 320px;min-height:42px;border-radius:10px;background:var(--surface);border:1px solid var(--line)}
+.st-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px;scrollbar-width:none}
+.st-chips button{flex:none;padding:8px 14px;border-radius:999px;font-size:13px;font-weight:600;color:var(--muted);background:var(--surface);border:1px solid var(--line)}
+.st-chips button.on{color:#241703;background:linear-gradient(180deg,#F8E6B4,#E7C77F);border-color:transparent}
+.st-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px}
+.st-tile{display:flex;flex-direction:column;gap:8px;text-align:left}
+.st-art{position:relative;aspect-ratio:3/4;border-radius:14px;overflow:hidden;background:linear-gradient(160deg,var(--surface-2),var(--bg));box-shadow:0 0 0 1px var(--line);display:grid;place-items:center;transition:transform .2s cubic-bezier(.2,.9,.3,1),box-shadow .2s}
+.st-art img{width:100%;height:100%;object-fit:cover}
+.st-art>b{font-size:42px;color:var(--dim)}
+.st-play{position:absolute;inset:0;display:grid;place-items:center;background:rgba(5,8,12,.55);opacity:0;transition:opacity .2s;font-style:normal;color:#fff}
+.st-play .i{width:52px;height:52px;padding:14px;border-radius:50%;background:linear-gradient(180deg,#F8E6B4,#E7C77F);color:#241703;box-sizing:border-box}
+.st-tile:hover .st-art{transform:translateY(-3px);box-shadow:0 0 0 1px rgba(231,199,127,.5),0 20px 36px -18px #000}
+.st-tile:hover .st-play,.st-tile:focus-visible .st-play{opacity:1}
+.st-meta{display:flex;flex-direction:column;line-height:1.3;min-width:0}
+.st-meta b{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-meta small{font-size:12px;color:var(--muted)}
+.st-player{position:fixed;inset:0;z-index:90;background:#05080C;display:flex;flex-direction:column;animation:fade .15s}
+.st-bar{display:flex;align-items:center;gap:12px;height:56px;padding:0 14px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:var(--side)}
+.st-t{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.st-t b{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.st-t small{font-size:12px;color:var(--muted)}
+.st-bal{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:9px;background:var(--surface);border:1px solid var(--line);font-weight:600;font-variant-numeric:tabular-nums}
+.st-frame{flex:1;position:relative}
+.st-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+body.st-open{overflow:hidden}
+@media (max-width:760px){.st-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.st-search{flex:1 1 100%;min-width:0}}
+@media (max-width:420px){.st-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
