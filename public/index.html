@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>TradeBlacket</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="styles.css">
+<style>[hidden]{display:none!important}</style>
+</head>
+<body>
+<canvas id="bgfx" aria-hidden="true"></canvas>
+<div class="app" id="app">
+  <aside class="side" id="side" aria-label="Site navigation">
+    <div class="side-h"><div class="logo" data-go="home" role="button" tabindex="0" aria-label="TradeBlacket home"><svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#1FCB6B"/><path d="M8.5 10h15M16 10v14" stroke="#03200E" stroke-width="3.6" stroke-linecap="round"/><circle cx="23.5" cy="22.5" r="3.4" fill="#03200E"/></svg><b>Trade<span>Blacket</span></b></div></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-f"><button data-open="fair">Fairness</button><button data-open="rules">House rules</button><button data-go="news">News</button><button id="slimbtn">Collapse</button></div>
+  </aside>
+  <header class="top">
+    <button class="ib burger" id="burger" aria-label="Open menu"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="logo mlogo" data-go="home" role="button" tabindex="0" aria-label="TradeBlacket home"><svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#1FCB6B"/><path d="M8.5 10h15M16 10v14" stroke="#03200E" stroke-width="3.6" stroke-linecap="round"/><circle cx="23.5" cy="22.5" r="3.4" fill="#03200E"/></svg></div>
+    <label class="search-top"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="gsearch" placeholder="Search games, cases, items" aria-label="Search" autocomplete="off"></label>
+    <div class="spacer"></div>
+    <div class="wallet" id="wallet" tabindex="0"><div class="balpop" id="balpop" role="tooltip"></div><div class="bal" id="balbox"><span id="chipico"></span><span class="num" id="bal">0.00</span></div><button class="claim" data-wallet="deposit"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Deposit</span></button></div>
+    <button class="ib" data-go="inventory" aria-label="Inventory"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18M10 12v2h4v-2"/></svg><i class="badge" id="invn" hidden>0</i></button>
+    <div id="who"></div>
+    <button class="ib" id="chatbtn" aria-label="Toggle chat"><svg class="i" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></button>
+  </header>
+  <div class="ticker" aria-label="Live drops"><div class="tk-label"><i></i>Live drops</div><div class="tk-track" id="tktrack"></div></div>
+  <main id="view"></main>
+  <aside class="chat" id="chat" aria-label="Chat">
+    <div class="chat-h"><b>Chat</b><span class="room">English</span><span class="online"><i></i><span id="online">1,284</span></span><button class="ib chatx" id="chatx" aria-label="Close chat"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="chat-list" id="clist"></div>
+    <form class="chat-f" id="cform"><input id="cin" maxlength="160" placeholder="Sign in to chat" autocomplete="off" aria-label="Chat message"><button class="ib send" aria-label="Send"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l16-8-6 16-2.5-6.5z"/></svg></button></form>
+  </aside>
+</div>
+<div id="gate"></div>
+<div id="menu"></div>
+<div id="modal"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<canvas id="fx" aria-hidden="true"></canvas>
+
+<script src="core.js"></script>
+<script src="shop.js"></script>
+<script src="games.js"></script>
+<script src="casino.js"></script>
+<script src="slots.js"></script>
+<script src="market.js"></script>
+<script src="wallet.js"></script>
+<script src="stocks.js"></script>
+<script src="pages.js"></script>
+</body>
+</html>

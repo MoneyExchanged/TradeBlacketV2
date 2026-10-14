@@ -1,0 +1,13 @@
+{
+  "name": "tradeblacket-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TradeBlacket website server: Roblox bio sign-in and the website side of Trade Empire's SiteWallet bridge.",
+  "main": "server.js",
+  "engines": { "node": "22.x" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --env-file=.env server.js",
+    "test": "node test.js"
+  }
+}

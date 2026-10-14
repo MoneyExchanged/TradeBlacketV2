@@ -1,0 +1,278 @@
+// TradeBlacket server: the website's side of Trade Empire's SiteWallet bridge.
+//
+// What it does
+//   - Receives Rodux deposits from Trade Empire game servers   POST /api/public/game/rodux-deposits
+//   - Answers withdrawal requests from game servers           POST /api/public/game/rodux-withdrawals
+//   - Signs players in by Roblox profile bio                  POST /api/auth/start, /api/auth/verify
+//   - Tells the website a player's wallet                     GET  /api/me
+//   - Serves the website from ./public
+//
+// It matches the game's rules exactly (ReplicatedStorage.Modules.SiteWalletRules):
+//   - Body is {idempotency_key, roblox_user_id, amount}, signed as lowercase hex HMAC-SHA256 of the
+//     raw body in the X-TE-Signature header, keyed with GAME_WEBHOOK_SECRET.
+//   - 200/201 with a JSON body = applied. Any other 4xx (except 408/409/425/429) = refused for good,
+//     and the game hands a refused deposit back. 5xx = the game asks again later with the same key.
+//   - Every key is applied once. A repeat gets the same answer it got the first time.
+//   - A withdrawal can never exceed what that player deposited minus what they already withdrew.
+//
+// Requires Node 22.5+ (uses the built-in node:sqlite). No npm packages.
+'use strict';
+const http = require('node:http');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
+
+const CFG = {
+  port: Number(process.env.PORT || 8080),
+  secret: process.env.GAME_WEBHOOK_SECRET || '',
+  db: process.env.DB_PATH || path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || __dirname, 'tradeblacket.db'),
+  publicDir: process.env.PUBLIC_DIR || path.join(__dirname, 'public'),
+  cookieSecure: process.env.COOKIE_SECURE !== 'false',
+  maxBody: 4096,
+};
+if (CFG.secret.length < 16) {
+  console.error('GAME_WEBHOOK_SECRET must be set (16+ characters) and match SECRET in ServerStorage.SiteWalletConfig.');
+  process.exit(1);
+}
+
+/* ---------- storage ---------- */
+const db = new DatabaseSync(CFG.db);
+db.exec(`
+  PRAGMA journal_mode = WAL;
+  CREATE TABLE IF NOT EXISTS users (
+    roblox_id INTEGER PRIMARY KEY,
+    username TEXT,
+    balance INTEGER NOT NULL DEFAULT 0,      -- Rodux on the site, whole units
+    bonus_lock INTEGER NOT NULL DEFAULT 0,   -- bonus Rodux that must be wagered before withdrawal
+    deposited INTEGER NOT NULL DEFAULT 0,    -- confirmed in from the game, all time
+    withdrawn INTEGER NOT NULL DEFAULT 0,    -- confirmed back to the game, all time
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS transfers (
+    idempotency_key TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('deposit','withdraw')),
+    roblox_id INTEGER NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('ok','refused')),
+    status_code INTEGER NOT NULL,
+    reference TEXT,
+    reason TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS transfers_user ON transfers (roblox_id, created_at DESC);
+  CREATE TABLE IF NOT EXISTS challenges (
+    token TEXT PRIMARY KEY, roblox_id INTEGER NOT NULL, username TEXT NOT NULL, phrase TEXT NOT NULL, created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY, roblox_id INTEGER NOT NULL, created_at INTEGER NOT NULL
+  );
+`);
+const now = () => Date.now();
+const tx = fn => { db.exec('BEGIN IMMEDIATE'); try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; } };
+const q = {
+  user: db.prepare('SELECT * FROM users WHERE roblox_id = ?'),
+  addUser: db.prepare('INSERT OR IGNORE INTO users (roblox_id, username, created_at) VALUES (?, ?, ?)'),
+  setName: db.prepare('UPDATE users SET username = ? WHERE roblox_id = ?'),
+  credit: db.prepare('UPDATE users SET balance = balance + ?, deposited = deposited + ? WHERE roblox_id = ?'),
+  debit: db.prepare('UPDATE users SET balance = balance - ?, withdrawn = withdrawn + ? WHERE roblox_id = ?'),
+  transfer: db.prepare('SELECT * FROM transfers WHERE idempotency_key = ?'),
+  addTransfer: db.prepare('INSERT INTO transfers (idempotency_key, kind, roblox_id, amount, status, status_code, reference, reason, created_at) VALUES (?,?,?,?,?,?,?,?,?)'),
+  recent: db.prepare('SELECT kind, amount, status, reference, reason, created_at FROM transfers WHERE roblox_id = ? ORDER BY created_at DESC LIMIT 25'),
+  addChallenge: db.prepare('INSERT INTO challenges (token, roblox_id, username, phrase, created_at) VALUES (?,?,?,?,?)'),
+  challenge: db.prepare('SELECT * FROM challenges WHERE token = ?'),
+  dropChallenge: db.prepare('DELETE FROM challenges WHERE token = ?'),
+  addSession: db.prepare('INSERT INTO sessions (token, roblox_id, created_at) VALUES (?,?,?)'),
+  session: db.prepare('SELECT * FROM sessions WHERE token = ?'),
+  dropSession: db.prepare('DELETE FROM sessions WHERE token = ?'),
+};
+
+/* ---------- the game's rules, mirrored ---------- */
+const withdrawable = u => Math.max(0, Math.min(u.balance - u.bonus_lock, u.deposited - u.withdrawn));
+const reference = kind => (kind === 'deposit' ? 'TBD-' : 'TBW-') + crypto.randomBytes(5).toString('hex').toUpperCase();
+
+function verifySignature(raw, header) {
+  if (typeof header !== 'string' || !/^[0-9a-f]{64}$/.test(header)) return false;
+  const expected = crypto.createHmac('sha256', CFG.secret).update(raw).digest();
+  return crypto.timingSafeEqual(expected, Buffer.from(header, 'hex'));
+}
+function parseTransfer(raw) {
+  let b;
+  try { b = JSON.parse(raw.toString('utf8')); } catch { return null; }
+  if (!b || typeof b !== 'object') return null;
+  const key = b.idempotency_key, uid = b.roblox_user_id, amount = b.amount;
+  if (typeof key !== 'string' || key.length < 1 || key.length > 64) return null;
+  if (!Number.isSafeInteger(uid) || uid < 1) return null;
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1e12) return null;
+  return { key, uid, amount };
+}
+// The answer a key got the first time, sent again for a repeat.
+function replay(res, t, t2) {
+  if (t.kind !== t2.kind || t.roblox_id !== t2.uid || t.amount !== t2.amount) {
+    // Same key, different transfer: a bug on the sender's side. Refused, never applied.
+    return send(res, 422, { error: 'This transfer id was already used for a different transfer' });
+  }
+  if (t.status === 'ok') return send(res, 200, { reference: t.reference, duplicate: true });
+  return send(res, t.status_code, { error: t.reason });
+}
+
+function handleDeposit(res, raw) {
+  const t = parseTransfer(raw);
+  if (!t) return send(res, 400, { error: 'Malformed transfer' });
+  const result = tx(() => {
+    const seen = q.transfer.get(t.key);
+    if (seen) return { replay: seen };
+    // A deposit for a player who has never signed in still lands: their account is their Roblox
+    // id, and it is waiting for them when they first verify on the site. Refusing would bounce
+    // the Rodux back for no reason.
+    q.addUser.run(t.uid, null, now());
+    q.credit.run(t.amount, t.amount, t.uid);
+    const ref = reference('deposit');
+    q.addTransfer.run(t.key, 'deposit', t.uid, t.amount, 'ok', 200, ref, null, now());
+    return { ref };
+  });
+  if (result.replay) return replay(res, result.replay, { ...t, kind: 'deposit' });
+  log('deposit', t.uid, t.amount, result.ref);
+  return send(res, 200, { reference: result.ref });
+}
+
+function handleWithdraw(res, raw) {
+  const t = parseTransfer(raw);
+  if (!t) return send(res, 400, { error: 'Malformed transfer' });
+  const result = tx(() => {
+    const seen = q.transfer.get(t.key);
+    if (seen) return { replay: seen };
+    const u = q.user.get(t.uid);
+    const refuse = (code, reason) => { q.addTransfer.run(t.key, 'withdraw', t.uid, t.amount, 'refused', code, null, reason, now()); return { code, reason }; };
+    if (!u) return refuse(404, 'No TradeBlacket account for this player');
+    const can = withdrawable(u);
+    if (t.amount > can) return refuse(422, can > 0 ? `Only ${can} Rodux can be withdrawn right now` : 'No Rodux available to withdraw');
+    q.debit.run(t.amount, t.amount, t.uid);
+    const ref = reference('withdraw');
+    q.addTransfer.run(t.key, 'withdraw', t.uid, t.amount, 'ok', 200, ref, null, now());
+    return { ref };
+  });
+  if (result.replay) return replay(res, result.replay, { ...t, kind: 'withdraw' });
+  if (result.code) { log('withdraw refused', t.uid, t.amount, result.reason); return send(res, result.code, { error: result.reason }); }
+  log('withdraw', t.uid, t.amount, result.ref);
+  return send(res, 200, { reference: result.ref });
+}
+
+/* ---------- sign-in by Roblox bio ---------- */
+const WORDS = ['amber','harbor','otter','quiet','copper','lantern','maple','orbit','velvet','cobalt','meadow','tundra','pixel','summit','ember','willow','fable','granite'];
+const pickWord = () => WORDS[crypto.randomInt(WORDS.length)];
+async function robloxUserByName(name) {
+  const r = await fetch('https://users.roblox.com/v1/usernames/users', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usernames: [name], excludeBannedUsers: true }),
+  });
+  if (!r.ok) throw new Error('roblox ' + r.status);
+  const j = await r.json();
+  return j.data && j.data[0] ? { id: j.data[0].id, name: j.data[0].name } : null;
+}
+async function robloxDescription(id) {
+  const r = await fetch(`https://users.roblox.com/v1/users/${id}`);
+  if (!r.ok) throw new Error('roblox ' + r.status);
+  return (await r.json()).description || '';
+}
+async function authStart(req, res) {
+  const b = await readJson(req);
+  const name = b && typeof b.username === 'string' ? b.username.trim() : '';
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) return send(res, 400, { error: 'Roblox usernames are 3 to 20 letters, numbers or underscores.' });
+  let u;
+  try { u = await robloxUserByName(name); } catch { return send(res, 502, { error: 'Roblox did not answer. Try again in a moment.' }); }
+  if (!u) return send(res, 404, { error: 'No Roblox account has that username.' });
+  const phrase = `TB ${pickWord()} ${pickWord()} ${pickWord()} ${crypto.randomInt(10, 100)}`;
+  const token = crypto.randomBytes(24).toString('hex');
+  q.addChallenge.run(token, u.id, u.name, phrase, now());
+  return send(res, 200, { token, phrase, username: u.name, robloxId: u.id });
+}
+async function authVerify(req, res) {
+  const b = await readJson(req);
+  const c = b && typeof b.token === 'string' ? q.challenge.get(b.token) : null;
+  if (!c || now() - c.created_at > 15 * 60e3) return send(res, 410, { error: 'That phrase has expired. Start again.' });
+  let desc;
+  try { desc = await robloxDescription(c.roblox_id); } catch { return send(res, 502, { error: 'Roblox did not answer. Try again in a moment.' }); }
+  if (!desc.includes(c.phrase)) return send(res, 409, { error: 'The phrase is not in your About section yet. Save it on Roblox, then verify again.' });
+  q.dropChallenge.run(c.token);
+  tx(() => { q.addUser.run(c.roblox_id, c.username, now()); q.setName.run(c.username, c.roblox_id); });
+  const token = crypto.randomBytes(32).toString('hex');
+  q.addSession.run(token, c.roblox_id, now());
+  res.setHeader('Set-Cookie', `tb_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${CFG.cookieSecure ? '; Secure' : ''}`);
+  return send(res, 200, { ok: true, username: c.username, robloxId: c.roblox_id });
+}
+function sessionUser(req) {
+  const m = /(?:^|;\s*)tb_session=([0-9a-f]{64})/.exec(req.headers.cookie || '');
+  const s = m && q.session.get(m[1]);
+  return s ? { token: m[1], user: q.user.get(s.roblox_id) } : null;
+}
+function me(req, res) {
+  const s = sessionUser(req);
+  if (!s || !s.user) return send(res, 401, { error: 'Not signed in' });
+  const u = s.user;
+  return send(res, 200, {
+    robloxId: u.roblox_id, username: u.username, balance: u.balance, bonusLock: u.bonus_lock,
+    deposited: u.deposited, withdrawn: u.withdrawn, withdrawable: withdrawable(u),
+    transfers: q.recent.all(u.roblox_id),
+  });
+}
+function logout(req, res) {
+  const s = sessionUser(req);
+  if (s) q.dropSession.run(s.token);
+  res.setHeader('Set-Cookie', 'tb_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+  return send(res, 200, { ok: true });
+}
+
+/* ---------- http plumbing ---------- */
+function send(res, code, body) {
+  if (res.headersSent) return;
+  res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(body));
+}
+function log(...a) { console.log(new Date().toISOString(), ...a); }
+function readRaw(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = []; let size = 0;
+    req.on('data', c => { size += c.length; if (size > CFG.maxBody) { reject(new Error('too large')); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+async function readJson(req) { try { return JSON.parse((await readRaw(req)).toString('utf8')); } catch { return null; } }
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
+function serveStatic(req, res) {
+  const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  let file = path.normalize(path.join(CFG.publicDir, url === '/' ? 'index.html' : url));
+  if (!file.startsWith(CFG.publicDir)) return send(res, 404, { error: 'Not found' });
+  if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(CFG.publicDir, 'index.html');
+  if (!fs.existsSync(file)) return send(res, 404, { error: 'Not found' });
+  res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
+  fs.createReadStream(file).pipe(res);
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const p = new URL(req.url, 'http://x').pathname;
+    if (req.method === 'POST' && (p === '/api/public/game/rodux-deposits' || p === '/api/public/game/rodux-withdrawals')) {
+      let raw;
+      try { raw = await readRaw(req); } catch { return send(res, 413, { error: 'Body too large' }); }
+      if (!verifySignature(raw, req.headers['x-te-signature'])) { log('bad signature', p); return send(res, 401, { error: 'Bad signature' }); }
+      return p.endsWith('deposits') ? handleDeposit(res, raw) : handleWithdraw(res, raw);
+    }
+    if (req.method === 'POST' && p === '/api/auth/start') return await authStart(req, res);
+    if (req.method === 'POST' && p === '/api/auth/verify') return await authVerify(req, res);
+    if (req.method === 'POST' && p === '/api/auth/logout') return logout(req, res);
+    if (req.method === 'GET' && p === '/api/me') return me(req, res);
+    if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true });
+    if (p.startsWith('/api/')) return send(res, 404, { error: 'Not found' });
+    if (req.method === 'GET') return serveStatic(req, res);
+    return send(res, 405, { error: 'Method not allowed' });
+  } catch (e) {
+    log('error', e && e.stack || e);
+    // 5xx: the game treats this as "ask again later", which is the only safe answer when the
+    // transaction may not have finished.
+    return send(res, 500, { error: 'Server error' });
+  }
+});
+if (require.main === module) server.listen(CFG.port, () => log(`TradeBlacket server on :${CFG.port}`));
+module.exports = { server, db };
