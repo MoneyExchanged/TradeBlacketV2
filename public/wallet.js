@@ -1,18 +1,16 @@
 'use strict';
 /* =========================================================
-   Wallet: Deposit / Withdraw / Rakeback, with Trade Empire as the only method.
+   Wallet: Deposit / Withdraw / Rakeback.
 
-   How money really moves (Trade Empire's SiteWallet bridge):
-   - Both directions start IN THE GAME. A player presses the TradeBlacket button in Trade Empire,
-     then "Send to TradeBlacket" (deposit) or "Bring back" (withdraw).
-   - The game server calls the TradeBlacket server, signed with the shared secret. The website
-     itself can never push Rodux into the game.
-   - A player can bring back at most what they sent (deposited minus withdrawn).
+   Everything happens on the website. Trade Empire takes no part: the TradeBlacket server reads
+   and writes the player's Trade Empire save through Roblox Open Cloud, and only while the player
+   is out of the game (the game keeps the save open while they play).
+   - Rodux: moved between the save's balance and the TradeBlacket balance.
+   - Limiteds: moved between the save's inventory and the TradeBlacket inventory (limiteds.js).
 
    Two modes:
-   - Live: the page is served by the TradeBlacket server (server/server.js). It reads the real
-     wallet from /api/me and signs in through /api/auth/*.
-   - Prototype: anywhere else (like this preview). The Trade Empire side is simulated.
+   - Live: the page is served by the TradeBlacket server (server.js).
+   - Preview: anywhere else (like this artifact). Trade Empire is simulated.
    ========================================================= */
 const TE={place:82632312078859,name:'Trade Empire'}; // change place to the live game's id
 const WAPI={live:false,me:null,seen:null};
@@ -82,14 +80,24 @@ const WI={
   ext:`<svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>`,
 };
 
+/* ---------- API helper ---------- */
+async function api(path,body){
+  try{
+    const r=await fetch(path,{method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+    let j={};try{j=await r.json()}catch{}
+    if(r.status===403&&j.limit&&typeof drawLimits==='function')drawLimits();
+    return{ok:r.ok,status:r.status,j};
+  }catch{return{ok:false,status:0,j:{error:'Could not reach TradeBlacket. Check your connection.'}}}
+}
+
 /* ---------- the modal ---------- */
-function openWallet(tab='deposit'){
+function openWallet(tab='deposit',pre=null){
   if(!S.user){openLogin();return}
   if(!['deposit','withdraw','rakeback'].includes(tab))tab='deposit';
-  let method=null,poll=0;
+  let method=pre,poll=0;
   const m=modal(`<div class="wtabs" role="tablist">${['deposit','withdraw','rakeback'].map(t=>`<button role="tab" data-wt="${t}">${WI[t]}<span>${t[0].toUpperCase()+t.slice(1)}</span></button>`).join('')}</div><div id="wbody" class="wbody"></div>`,{cls:'wal',onClose:()=>clearInterval(poll)});
   const R=m.root,B=()=>$('#wbody',R);
-  if(WAPI.live)poll=setInterval(async()=>{const before=JSON.stringify(WAPI.me&&WAPI.me.transfers);await syncMe();const changed=JSON.stringify(WAPI.me&&WAPI.me.transfers)!==before;if(changed)await loadGE(true);if(method&&changed&&!($('#wa',R)&&document.activeElement===$('#wa',R)))draw()},4000);
+  if(WAPI.live)poll=setInterval(async()=>{if(method!=='te')return;const before=JSON.stringify(WAPI.me&&WAPI.me.transfers);await syncMe();if(JSON.stringify(WAPI.me&&WAPI.me.transfers)!==before){await loadGE(true);if(!($('#wa',R)&&document.activeElement===$('#wa',R)))draw()}},6000);
 
   function draw(){
     $$('[data-wt]',R).forEach(b=>{const on=b.dataset.wt===tab;b.classList.toggle('on',on);b.setAttribute('aria-selected',on)});
@@ -98,11 +106,12 @@ function openWallet(tab='deposit'){
     return tab==='deposit'?deposit():withdraw();
   }
   function picker(){
-    const dep=tab==='deposit';
+    const dep=tab==='deposit',iv=WAPI.me?WAPI.me.itemValue:0;
     B().innerHTML=`<h3 class="wh">Select ${dep?'Payment':'Withdrawal'} Method</h3>
-      <div class="mgrid"><button class="mtile" data-m="te">${TE_MARK(46)}<b>${TE.name}</b><span>Rodux</span></button></div>
-      <p class="wnote">${dep?'Rodux you earn in Trade Empire is the only way to fund TradeBlacket.':'Rodux goes back to the Trade Empire account you signed in with.'}</p>`;
-    $('[data-m]',R).onclick=()=>{method='te';draw()};
+      <div class="mgrid"><button class="mtile" data-m="te">${TE_MARK(46)}<b>${TE.name}</b><span>Rodux</span></button>
+        <button class="mtile" data-m="ltd"><span class="mhex">${HEX(30)}</span><b>${TE.name}</b><span>Limiteds</span></button></div>
+      <p class="wnote">${dep?`Move Rodux or limiteds from your ${TE.name} save. You don't need to open the game.`:`Rodux and limiteds go back to the ${TE.name} account you signed in with.${iv?` You have ${fmt0(iv)} in limiteds on TradeBlacket.`:''}`}</p>`;
+    $$('[data-m]',R).forEach(b=>b.onclick=()=>{if(b.dataset.m==='ltd'){m.close();openInventory(dep?'game':'site');return}method='te';draw()});
   }
   function head(t){return`<div class="whd"><button class="ib wbk" id="wbk" aria-label="Back">${WI.back}</button>${TE_MARK(30)}<div><b>${TE.name}</b><span>${t}</span></div>${WAPI.live?'<i class="wlive">Connected</i>':''}</div>`}
   function history(dir){
@@ -110,79 +119,80 @@ function openWallet(tab='deposit'){
     if(!tx.length)return'';
     return`<div class="wlist"><span class="wlbl">Recent</span>${tx.map(t=>`<div class="wrow"><span class="dot ${t.status==='Completed'?'ok':'no'}"></span><b>${dir==='in'?'+':'−'}${fmt0(t.amt)}</b><span class="ref">${esc(t.ref||t.reason||'')}</span><time>${wAgo(t.t)}</time></div>`).join('')}</div>`;
   }
-  const join=`<a class="cta ghost" href="https://www.roblox.com/games/${TE.place}" target="_blank" rel="noopener">${WI.ext}Open ${TE.name}</a>`;
-  const steps=dep=>dep?`<ol class="wsteps"><li><b>Join ${TE.name}</b><span>Any server works.</span></li><li><b>Press TradeBlacket</b><span>The green button in the bottom left corner.</span></li><li><b>Send to TradeBlacket</b><span>Enter an amount. It lands here within seconds.</span></li></ol>`
-    :`<ol class="wsteps"><li><b>Join ${TE.name}</b><span>Any server works.</span></li><li><b>Press TradeBlacket, then Bring back</b><span>Enter an amount up to the figure above.</span></li><li><b>Done</b><span>The game adds it to your balance once TradeBlacket confirms.</span></li></ol>`;
-  // Live: read the Trade Empire save once per view. Offline players can move Rodux right here.
+  // Live: read the Trade Empire save once per view.
   let GE=null,geAt=0;
   async function loadGE(force){
     if(!WAPI.live)return null;
     if(GE&&!force&&Date.now()-geAt<8000)return GE;
-    try{const r=await fetch('/api/game/wallet',{credentials:'same-origin',cache:'no-store'});GE=r.ok?await r.json():{available:false};}catch{GE={available:false}}
+    const r=await api('/api/game/wallet');GE=r.ok?r.j:{available:false,error:r.j.error};
     geAt=Date.now();return GE;
   }
   async function direct(kind){
     const a=Math.floor(+$('#wa',R).value||0),e=$('#we',R),btn=$('#wgo',R);e.textContent='';
     if(a<1){e.textContent='Enter a whole amount of Rodux.';return}
+    if(kind==='deposit'&&!accepted('cds')){if(await needCds())openWallet('deposit','te');return}
     btn.disabled=true;const label=btn.innerHTML;btn.innerHTML=`<div class="spin sm"></div>${kind==='deposit'?'Moving Rodux from':'Sending Rodux to'} ${TE.name}`;
-    let r,j={};try{r=await fetch('/api/game/'+kind,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:a})});j=await r.json()}catch{}
+    const r=await api('/api/game/'+kind,{amount:a}),j=r.j;
     if(!B())return;
-    if(r&&r.ok){
+    if(r.ok){
       await syncMe();await loadGE(true);
       toast(kind==='deposit'?`${fmt0(a)} Rodux moved from ${TE.name} to TradeBlacket`:`${fmt0(a)} Rodux is back in ${TE.name}`,kind==='deposit'?'win':'gold');
       if(j.pending)toast('Roblox is slow to confirm. It will finish on its own in a minute.');
       draw();return;
     }
-    btn.disabled=false;btn.innerHTML=label;e.textContent=j.error||'Could not reach TradeBlacket. Nothing was moved.';
+    btn.disabled=false;btn.innerHTML=label;e.textContent=j.error||'Nothing was moved.';
     if(j.inGame){await loadGE(true);draw()}
   }
+  const outOfGame=dep=>`<div class="wwarn">You're in ${TE.name} right now. The game keeps your save open while you play, so ${dep?'deposits':'withdrawals'} can't touch it. Leave the game, wait a few seconds, then press Check again.</div><button class="cta ghost" id="wre">Check again</button>`;
   function liveBody(dep){
     const g=GE;
     if(!g)return`<div class="wwait"><div class="spin"></div><span>Checking your ${TE.name} save…</span></div>`;
-    if(!g.available)return steps(dep)+(dep?`<div class="wwait"><div class="spin"></div><span>Watching for Rodux from ${TE.name}…</span></div>`:'');
-    if(!g.hasSave)return`<div class="wwarn">Join ${TE.name} once so your save exists, then you can move Rodux from here.</div>`+steps(dep);
-    if(g.inGame)return`<div class="wwarn">You're in ${TE.name} right now. Use the TradeBlacket button in the game, or leave the game to ${dep?'deposit':'bring Rodux back'} from here.</div>`+steps(dep)+(dep?`<div class="wwait"><div class="spin"></div><span>Watching for Rodux from ${TE.name}…</span></div>`:'');
+    if(!g.available)return`<div class="wwarn">${esc(g.error||`Moving Rodux to and from ${TE.name} is not switched on yet. Please try again later.`)}</div>`;
+    if(!g.hasSave)return`<div class="wwarn">We couldn't find a ${TE.name} save for this account. Play ${TE.name} once so your save exists.</div>`;
+    if(g.inGame)return outOfGame(dep);
     const cap=dep?g.balance:Math.max(0,Math.min(Math.floor(S.bal-(S.lock||0)),WAPI.me?WAPI.me.withdrawable:0,g.gameWithdrawable));
-    return`<div class="wstat"><div><span>In ${TE.name}</span><b>${chip(14)}${fmt0(g.balance)}</b></div><div><span>${dep?'On TradeBlacket':'Can bring back'}</span><b>${chip(14)}${dep?fmt(S.bal):fmt0(cap)}</b></div></div>
-      <div class="wsim live"><span class="wlbl">${dep?'Deposit from your save':'Bring back to your save'} · works while you're out of the game</span><div class="amt">${chip(16)}<input id="wa" type="number" min="1" step="1" value="${Math.min(dep?500:cap,cap)}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${cap<1?' disabled':''}>${dep?`Deposit from ${TE.name}`:`Bring back to ${TE.name}`}</button></div>
-      <details class="wmore"><summary>Or do it from inside the game</summary>${steps(dep)}</details>`;
+    return`<div class="wstat"><div><span>In ${TE.name}</span><b>${chip(14)}${fmt0(g.balance)}</b></div><div><span>${dep?'On TradeBlacket':'Can withdraw'}</span><b>${chip(14)}${dep?fmt(S.bal):fmt0(cap)}</b></div></div>
+      <div class="wsim live"><span class="wlbl">${dep?`Deposit from your ${TE.name} save`:`Withdraw to your ${TE.name} save`}</span><div class="amt">${chip(16)}<input id="wa" type="number" min="1" step="1" value="${Math.min(dep?500:cap,cap)}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${cap<1?' disabled':''}>${dep?'Deposit':'Withdraw'}</button></div>
+      <p class="wnote">Stay out of ${TE.name} while a transfer runs. It takes a few seconds.</p>`;
   }
   function wireLive(dep){
     const cap=()=>dep?GE.balance:Math.max(0,Math.min(Math.floor(S.bal-(S.lock||0)),WAPI.me?WAPI.me.withdrawable:0,GE.gameWithdrawable));
     if($('#wmax',R))$('#wmax',R).onclick=()=>{$('#wa',R).value=cap()};
     if($('#wgo',R))$('#wgo',R).onclick=()=>direct(dep?'deposit':'withdraw');
+    if($('#wre',R))$('#wre',R).onclick=async()=>{$('#wre',R).innerHTML='<div class="spin sm"></div>Checking';await loadGE(true);draw()};
   }
   function deposit(){
     const w=wState();
     B().innerHTML=`${head('Deposit Rodux')}
-      ${WAPI.live?`<div id="gx">${liveBody(true)}</div>`:steps(true)+`<div class="wstat"><div><span>Signed in as</span><b>${esc(S.user.name)}</b></div><div><span>Sent so far</span><b>${chip(14)}${fmt0(w.deposited)}</b></div></div>
-      <div class="wsim"><span class="wlbl">Prototype · stands in for the in-game panel</span><div class="amt">${chip(16)}<input id="wa" type="number" min="1" step="1" value="${Math.min(500,teState().rodux)}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo">Send from ${TE.name}</button><p class="wnote">${fmt0(teState().rodux)} Rodux left in the simulated game balance.</p></div>`}
-      ${join}${history('in')}
-      <p class="wnote">Limiteds stay in ${TE.name} for now. Win them here from cases, battles and the upgrader.</p>`;
+      ${WAPI.live?`<div id="gx">${liveBody(true)}</div>`:`<div class="wstat"><div><span>Signed in as</span><b>${esc(S.user.name)}</b></div><div><span>Deposited so far</span><b>${chip(14)}${fmt0(w.deposited)}</b></div></div>
+      <div class="wsim"><span class="wlbl">Preview · ${TE.name} is simulated</span><div class="amt">${chip(16)}<input id="wa" type="number" min="1" step="1" value="${Math.min(500,teState().rodux)}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo">Deposit</button><p class="wnote">${fmt0(teState().rodux)} Rodux left in the simulated ${TE.name} save.</p></div>`}
+      ${history('in')}
+      <p class="wnote">Deposits follow the <button class="lnk" data-legal="cds">${TE.name} Currency Deduction Service</button>.</p>`;
     $('#wbk',R).onclick=()=>{method=null;draw()};
     if(WAPI.live){if(GE)wireLive(true);else loadGE().then(()=>{if(B()&&tab==='deposit'&&method)draw()});return}
     $('#wmax',R).onclick=()=>{$('#wa',R).value=Math.floor(teState().rodux)};
     $('#wgo',R).onclick=async()=>{const te=teState(),a=Math.floor(+$('#wa',R).value||0),e=$('#we',R);
       if(a<1){e.textContent='Enter a whole amount of Rodux.';return}
-      if(a>te.rodux){e.textContent='Insufficient balance in Trade Empire.';return}
-      const btn=$('#wgo',R);btn.disabled=true;btn.innerHTML='<div class="spin sm"></div>Sending';te.rodux-=a;save();
+      if(a>te.rodux){e.textContent=`Not enough Rodux in ${TE.name}.`;return}
+      if(!accepted('cds')){if(await needCds())openWallet('deposit','te');return}
+      const btn=$('#wgo',R);btn.disabled=true;btn.innerHTML='<div class="spin sm"></div>Moving Rodux';te.rodux-=a;save();
       await sleep(ri(900,1600));te.dep+=a;pay(a);addTx({dir:'in',kind:'rodux',amt:a,code:txRef('in'),status:'Completed'});
-      toast(`${fmt(a)} Rodux arrived from ${TE.name}`,'win');if(B())draw()};
+      toast(`${fmt(a)} Rodux moved from ${TE.name}`,'win');if(B())draw()};
   }
   function withdraw(){
-    const w=wState(),lockNote=S.lock>0?`<div class="wwarn">${fmt(S.lock)} bonus Rodux still has to be wagered once before it can go back.</div>`:'';
+    const w=wState(),lockNote=S.lock>0?`<div class="wwarn">${fmt(S.lock)} bonus Rodux still has to be wagered once before it can be withdrawn.</div>`:'';
     B().innerHTML=`${head('Withdraw Rodux')}
-      <div class="wbig"><span>Can bring back</span><b>${chip(22)}${fmt0(w.canBack)}</b><small>You can bring back up to what you've sent from ${TE.name}: ${fmt0(w.deposited)} sent, ${fmt0(w.withdrawn)} already back.</small></div>
+      <div class="wbig"><span>Can withdraw</span><b>${chip(22)}${fmt0(w.canBack)}</b><small>You can withdraw up to what you've deposited from ${TE.name}: ${fmt0(w.deposited)} deposited, ${fmt0(w.withdrawn)} already withdrawn.</small></div>
       ${lockNote}
-      ${WAPI.live?`<div id="gx">${liveBody(false)}</div>`:steps(false)+`<div class="wsim"><span class="wlbl">Prototype · stands in for the in-game panel</span><div class="amt">${chip(16)}<input id="wa" type="number" min="1" step="1" value="${w.canBack}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${w.canBack<1?' disabled':''}>Bring back to ${TE.name}</button></div>`}
-      ${join}${history('out')}`;
+      ${WAPI.live?`<div id="gx">${liveBody(false)}</div>`:`<div class="wsim"><span class="wlbl">Preview · ${TE.name} is simulated</span><div class="amt">${chip(16)}<input id="wa" type="number" min="1" step="1" value="${w.canBack}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${w.canBack<1?' disabled':''}>Withdraw</button></div>`}
+      ${history('out')}`;
     $('#wbk',R).onclick=()=>{method=null;draw()};
     if(WAPI.live){if(GE)wireLive(false);else loadGE().then(()=>{if(B()&&tab==='withdraw'&&method)draw()});return}
     $('#wmax',R).onclick=()=>{$('#wa',R).value=wState().canBack};
     $('#wgo',R).onclick=async()=>{const a=Math.floor(+$('#wa',R).value||0),e=$('#we',R),can=wState().canBack;
       if(a<1){e.textContent='Enter a whole amount of Rodux.';return}
-      if(a>can){e.textContent=can>0?`You only have ${fmt0(can)} Rodux available on the site.`:'You have no Rodux available on the site.';return}
-      const btn=$('#wgo',R);btn.disabled=true;btn.innerHTML='<div class="spin sm"></div>Waiting for TradeBlacket';
+      if(a>can){e.textContent=can>0?`You can withdraw up to ${fmt0(can)} Rodux.`:'You have no Rodux to withdraw.';return}
+      const btn=$('#wgo',R);btn.disabled=true;btn.innerHTML=`<div class="spin sm"></div>Sending to ${TE.name}`;
       await sleep(ri(900,1600));const te=teState();setBal(S.bal-a);te.wd+=a;te.rodux+=a;save();
       addTx({dir:'out',kind:'rodux',amt:a,code:txRef('out'),status:'Completed'});toast(`${fmt(a)} Rodux is back in ${TE.name}`,'gold');if(B())draw()};
   }
@@ -191,7 +201,7 @@ function openWallet(tab='deposit'){
     B().innerHTML=`<div class="rbhero"><span>Ready to claim</span><b>${chip(24)}<i id="rba">${fmt(rb.acc)}</i></b><button class="cta" id="rbc"${rb.acc<1?' disabled':''}>${rb.acc<1?'Keep playing to earn rakeback':'Claim rakeback'}</button></div>
       <div class="wstat"><div><span>Your rate</span><b>${(rate*100).toFixed(2)}% of wagered</b></div><div><span>Claimed all time</span><b>${chip(14)}${fmt(rb.total)}</b></div></div>
       <div class="rbbar"><div class="kv"><span>${rate>=RB.cap?'Top rate reached':`${(next*100).toFixed(2)}% at level ${L+toNext}`}</span><b>Level ${L}</b></div><div class="rbtrack"><i style="width:${rate>=RB.cap?100:((L%5)/5*100)}%"></i></div></div>
-      <ul class="how"><li>Every bet you place earns rakeback, win or lose.</li><li>The rate goes up by 0.02% every 5 levels, to a top rate of 0.40%.</li><li>Rakeback is paid as bonus Rodux, so it has to be wagered once before you can bring it back to ${TE.name}.</li></ul>`;
+      <ul class="how"><li>Every bet you place earns rakeback, win or lose.</li><li>The rate goes up by 0.02% every 5 levels, to a top rate of 0.40%.</li><li>Rakeback is paid as bonus Rodux, so it has to be wagered once before you can withdraw it to ${TE.name}.</li></ul>`;
     $('#rbc',R).onclick=()=>{const s=rbState();const a=Math.floor(s.acc*100)/100;if(a<1)return;s.acc=r2(s.acc-a);s.total=r2(s.total+a);save();bonus(a);
       const r=$('#rbc',R).getBoundingClientRect();confetti(r.left+r.width/2,r.top,40);toast(`+${fmt(a)} Rodux rakeback`,'win');draw()};
   }
@@ -201,4 +211,4 @@ function openWallet(tab='deposit'){
 function wAgo(t){const s=Math.max(0,(Date.now()-t)/1e3);return s<60?'now':s<3600?`${Math.floor(s/60)}m`:s<86400?`${Math.floor(s/3600)}h`:`${Math.floor(s/86400)}d`}
 
 document.addEventListener('click',e=>{const w=e.target.closest('[data-wallet]');if(w)openWallet(w.dataset.wallet||'deposit')});
-PAGES.wallet=el=>{el.innerHTML=`<div class="empty"><h3>Wallet</h3><p>Move Rodux between ${TE.name} and TradeBlacket, and claim rakeback.</p><div style="display:flex;gap:8px;justify-content:center;margin-top:16px"><button class="cta inline" data-wallet="deposit">Deposit</button><button class="cta ghost inline" data-wallet="withdraw">Withdraw</button><button class="cta ghost inline" data-wallet="rakeback">Rakeback</button></div></div>`;openWallet('deposit')};
+PAGES.wallet=el=>{el.innerHTML=`<div class="empty"><h3>Wallet</h3><p>Move Rodux and limiteds between ${TE.name} and TradeBlacket, and claim rakeback. All from here, no need to open the game.</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:16px"><button class="cta inline" data-wallet="deposit">Deposit</button><button class="cta ghost inline" data-wallet="withdraw">Withdraw</button><button class="cta ghost inline" data-inv="site">Limiteds</button><button class="cta ghost inline" data-wallet="rakeback">Rakeback</button></div></div>`;openWallet('deposit')};

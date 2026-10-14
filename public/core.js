@@ -374,7 +374,7 @@ function openMenu(btn){
   if(m.innerHTML){closeMenu();return}
   const L=lvl();
   m.innerHTML=`<div class="pop" style="top:${r.bottom+8}px;right:${Math.max(12,innerWidth-r.right)}px"><div class="ph2">${avatar(me(),38)}<div><b>${esc(S.user.name)}</b><span>Level ${L} · ${fmt0(S.stats.wagered)} wagered</span></div></div><hr>
-    <button data-go="profile">${ic('profile',17)}Profile</button><button data-go="inventory">${ic('inventory',17)}Inventory <span class="lv" style="margin-left:auto">${S.inv.length}</span></button><button data-wallet="deposit">${ic('tag',17)}Wallet</button><button data-go="rewards">${ic('rewards',17)}Rewards</button><hr>
+    <button data-go="profile">${ic('profile',17)}Profile</button><button data-go="inventory">${ic('inventory',17)}Inventory <span class="lv" style="margin-left:auto">${S.inv.length}</span></button><button data-wallet="deposit">${ic('tag',17)}Wallet</button><button data-inv="site">${ic('inventory',17)}Trade Empire limiteds</button><button data-go="settings">${ic('shield',17)}Responsible play</button><button data-go="rewards">${ic('rewards',17)}Rewards</button><hr>
     <button id="lo">${ic('logout',17)}Sign out</button></div>`;
   $('#lo',m).onclick=()=>{if(typeof WAPI!=='undefined'&&WAPI.live)fetch('/api/auth/logout',{method:'POST'}).catch(()=>{});S.user=null;save();drawWho();closeMenu();toast('Signed out.');if(cur==='profile')go('home')};
   setTimeout(()=>document.addEventListener('click',function h(e){if(!e.target.closest('.pop')&&e.target.closest('#who')!==btn.parentElement){closeMenu()}if(!$('#menu').innerHTML)document.removeEventListener('click',h)}),0);
@@ -395,7 +395,7 @@ function openFair(){
   <p class="fine">Prototype: results are generated in your browser. The live site should roll them on the server, publish a hashed seed before each round and reveal it after, so players can check every result.</p>`);
 }
 function openRules(){
-  modal(`<span class="eyebrow">House rules</span><h3>How TradeBlacket works</h3><ul class="how" style="margin-bottom:0"><li>Rodux moves between Trade Empire and TradeBlacket from the TradeBlacket button in the game. You can bring back up to what you sent.</li><li>Never sell or buy Rodux or items for real money.</li><li>Bonus Rodux from daily rewards, missions, codes and level-ups must be wagered once before it can be withdrawn.</li><li>You must be 16 or older to play.</li><li>Be kind in chat. Scams, begging and spam get muted.</li></ul>`);
+  modal(`<span class="eyebrow">House rules</span><h3>How TradeBlacket works</h3><ul class="how" style="margin-bottom:0"><li>Rodux and limiteds move between Trade Empire and TradeBlacket from the Wallet on this site, while you're out of the game. You can withdraw up to the Rodux you deposited.</li><li>Never sell or buy Rodux or items for real money.</li><li>Bonus Rodux from daily rewards, missions, codes and level-ups must be wagered once before it can be withdrawn.</li><li>You must be 16 or older to play.</li><li>Be kind in chat. Scams, begging and spam get muted.</li></ul>`);
 }
 
 /* ---------- public profile modal ---------- */
@@ -416,9 +416,9 @@ function openUser(name){
 $('#chipico').innerHTML=chip(18);
 $('#bal').textContent=fmt(S.bal);
 const NAVDEF=[
-  ['Play',[['home','Home','home'],['cases','Cases','cases'],['battles','Case Battles','battles','live'],['upgrader','Upgrader','upgrader'],['predictions','Predictions','predictions','new'],['stocks','Stocks','stocks','new'],['market','Marketplace','market']]],
+  ['Play',[['home','Home','home'],['cases','Cases','cases'],['battles','Case Battles','battles','live'],['upgrader','Upgrader','upgrader'],['flip','Limited Flip','coinflip','new'],['predictions','Predictions','predictions','new'],['stocks','Stocks','stocks','new'],['market','Marketplace','market']]],
   ['Casino',[['slots','Slots','slots','new'],...ORIG.map(k=>[k,GAMES[k].n,k,['baccarat','limbo','hilo','keno','wheel'].includes(k)?'new':''])]],
-  ['Account',[['wallet','Wallet','tag'],['rewards','Rewards','rewards'],['inventory','Inventory','inventory'],['profile','Profile','profile'],['news','News','news']]]
+  ['Account',[['wallet','Wallet','tag'],['settings','Responsible play','shield'],['rewards','Rewards','rewards'],['inventory','Inventory','inventory'],['profile','Profile','profile'],['news','News','news']]]
 ];
 $('#nav').innerHTML=NAVDEF.map(([h,items])=>`<h6>${h}</h6>`+items.map(([k,l,icn,t])=>`<button data-go="${k}" title="${l}">${ic(icn,19)}<span>${l}</span>${t?`<i class="tg ${t}">${t==='live'?'Live':'New'}</i>`:''}</button>`).join('')).join('');
 $('#burger').onclick=()=>$('#app').classList.toggle('nav-open');
@@ -445,6 +445,6 @@ $('.logo').addEventListener('keydown',e=>{if(e.key==='Enter')go('home')});
 drawWho();drawInvCount();
 function drawBalPop(){
   const p=$('#balpop');if(!p)return;const lim=invVal(),stk=typeof posVal==='function'?posVal():0;
-  p.innerHTML=`<div class="kv"><span>Rodux</span><b>${chip(14)}${fmt(S.bal)}</b></div><div class="kv"><span>Limiteds · ${S.inv.length} item${S.inv.length===1?'':'s'}</span><b>${chip(14)}${fmt(lim)}</b></div>${stk>0?`<div class="kv"><span>Stocks</span><b>${chip(14)}${fmt(stk)}</b></div>`:''}<div class="kv tot"><span>Total worth</span><b>${chip(15)}${fmt(S.bal+lim+stk)}</b></div><p class="note">Limiteds count at their value, not their latest sale price.</p>`;
+  p.innerHTML=`<div class="kv"><span>Rodux</span><b>${chip(14)}${fmt(S.bal)}</b></div><div class="kv"><span>Limiteds · ${S.inv.length} item${S.inv.length===1?'':'s'}</span><b>${chip(14)}${fmt(lim)}</b></div>${stk>0?`<div class="kv"><span>Stocks</span><b>${chip(14)}${fmt(stk)}</b></div>`:''}${WAPI&&WAPI.me&&WAPI.me.itemValue?`<div class="kv"><span>Trade Empire limiteds</span><b>${HEX(14)}${fmt0(WAPI.me.itemValue)}</b></div>`:''}<div class="kv tot"><span>Total worth</span><b>${chip(15)}${fmt(S.bal+lim+stk)}</b></div><p class="note">Limiteds count at their value, not their latest sale price.</p>`;
 }
 $('#wallet').addEventListener('mouseenter',drawBalPop);$('#wallet').addEventListener('focusin',drawBalPop);

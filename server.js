@@ -1,13 +1,18 @@
-// TradeBlacket server: the website's side of Trade Empire's SiteWallet bridge.
+// TradeBlacket server.
 //
 // What it does
-//   - Receives Rodux deposits from Trade Empire game servers   POST /api/public/game/rodux-deposits
-//   - Answers withdrawal requests from game servers           POST /api/public/game/rodux-withdrawals
 //   - Signs players in by Roblox profile bio                  POST /api/auth/start, /api/auth/verify
-//   - Tells the website a player's wallet                     GET  /api/me
+//   - Moves Rodux between a player's Trade Empire save and the site    /api/game/*   (gamebridge.js)
+//   - Moves limiteds between a save and the site, and runs item flips  /api/items/*, /api/flips/* (items.js)
+//   - Responsible-play limits a player sets on themselves              /api/limits/*  (limits.js)
+//   - Records which version of the Terms, License and Deduction Service a player accepted
 //   - Serves the website from ./public
 //
-// It matches the game's rules exactly (ReplicatedStorage.Modules.SiteWalletRules):
+// The game itself takes no part: everything goes through Roblox Open Cloud while the player is
+// out of the game. The signed endpoints below are what the game's old SiteWallet bridge called.
+// That bridge is switched off; they stay so that any transfer it started before can still finish.
+//
+// Signed game endpoints, matching ReplicatedStorage.Modules.SiteWalletRules:
 //   - Body is {idempotency_key, roblox_user_id, amount}, signed as lowercase hex HMAC-SHA256 of the
 //     raw body in the X-TE-Signature header, keyed with GAME_WEBHOOK_SECRET.
 //   - 200/201 with a JSON body = applied. Any other 4xx (except 408/409/425/429) = refused for good,
@@ -68,6 +73,11 @@ db.exec(`
     token TEXT PRIMARY KEY, roblox_id INTEGER NOT NULL, created_at INTEGER NOT NULL
   );
 `);
+{ const cols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+  if (!cols.includes('tos_version')) db.exec('ALTER TABLE users ADD COLUMN tos_version TEXT');
+  if (!cols.includes('cds_version')) db.exec('ALTER TABLE users ADD COLUMN cds_version TEXT'); }
+// Bump these when a document changes in a way players must agree to again.
+const LEGAL = { tos: '2026-10-14', cds: '2026-10-14' };
 const now = () => Date.now();
 const tx = fn => { db.exec('BEGIN IMMEDIATE'); try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; } };
 const q = {
@@ -188,14 +198,14 @@ async function authStart(req, res) {
   return send(res, 200, { token, phrase, username: u.name, robloxId: u.id });
 }
 async function authVerify(req, res) {
-  const b = await readJson(req);
+  const b = (await readJson(req)) || {};
   const c = b && typeof b.token === 'string' ? q.challenge.get(b.token) : null;
   if (!c || now() - c.created_at > 15 * 60e3) return send(res, 410, { error: 'That phrase has expired. Start again.' });
   let desc;
   try { desc = await robloxDescription(c.roblox_id); } catch { return send(res, 502, { error: 'Roblox did not answer. Try again in a moment.' }); }
   if (!desc.includes(c.phrase)) return send(res, 409, { error: 'The phrase is not in your About section yet. Save it on Roblox, then verify again.' });
   q.dropChallenge.run(c.token);
-  tx(() => { q.addUser.run(c.roblox_id, c.username, now()); q.setName.run(c.username, c.roblox_id); });
+  tx(() => { q.addUser.run(c.roblox_id, c.username, now()); q.setName.run(c.username, c.roblox_id); if (b.acceptTos === LEGAL.tos) db.prepare('UPDATE users SET tos_version = ? WHERE roblox_id = ?').run(LEGAL.tos, c.roblox_id); });
   const token = crypto.randomBytes(32).toString('hex');
   q.addSession.run(token, c.roblox_id, now());
   res.setHeader('Set-Cookie', `tb_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${CFG.cookieSecure ? '; Secure' : ''}`);
@@ -213,6 +223,8 @@ function me(req, res) {
   return send(res, 200, {
     robloxId: u.roblox_id, username: u.username, balance: u.balance, bonusLock: u.bonus_lock,
     deposited: u.deposited, withdrawn: u.withdrawn, withdrawable: withdrawable(u),
+    legal: { tos: u.tos_version === LEGAL.tos, cds: u.cds_version === LEGAL.cds, versions: LEGAL },
+    limits: limits.status(u.roblox_id), itemValue: items.siteItemValue(u.roblox_id),
     // in-game transfers and website (offline) transfers together, newest first
     transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id))
       .sort((a, b) => b.created_at - a.created_at).slice(0, 25),
@@ -226,10 +238,67 @@ function logout(req, res) {
 }
 
 /* ---------- offline transfers (website <-> Trade Empire save, through Roblox Open Cloud) ---------- */
+// Deposits need the Deduction Service accepted; everything except withdrawals respects limits.
+function guard(robloxId, kind, amount) {
+  const u = q.user.get(robloxId);
+  if ((kind === 'deposit' || kind === 'items') && (!u || u.cds_version !== LEGAL.cds)) return 'Please read and accept the Trade Empire Currency Deduction Service first.';
+  if (kind !== 'withdraw' && (!u || u.tos_version !== LEGAL.tos)) return 'Please accept the Terms of Service and License Agreement first.';
+  return limits.guard(robloxId, kind, amount);
+}
 const bridge = require('./gamebridge.js').create({
-  db, tx, log: (...a) => log(...a),
+  db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a),
   siteWithdrawable: robloxId => { const u = q.user.get(robloxId); return u ? withdrawable(u) : 0; }
 });
+const items = require('./items.js').create({ db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a) });
+const limits = require('./limits.js').create({ db, tx });
+
+/* ---------- player routes that need a session ---------- */
+function authed(req, res) { const s = sessionUser(req); if (!s || !s.user) { send(res, 401, { error: 'Not signed in' }); return null; } return s.user; }
+async function run(res, fn) {
+  try { return send(res, 200, await fn()); }
+  catch (e) {
+    if (e instanceof bridge.BridgeError) return send(res, e.code, { error: e.message, ...(e.extra || {}) });
+    log('route', (e && e.stack) || e);
+    return send(res, 500, { error: 'Something went wrong. Nothing was moved.' });
+  }
+}
+const busyItems = new Set();
+async function itemsRoute(req, res, p) {
+  const u = authed(req, res); if (!u) return;
+  const id = u.roblox_id, name = u.username || String(id);
+  if (req.method === 'GET' && p === '/api/items/save') return run(res, () => items.saveInventory(id));
+  if (req.method === 'GET' && p === '/api/items/site') return run(res, () => items.siteInventory(id));
+  if (req.method === 'GET' && p === '/api/flips') return run(res, () => items.flipList(id));
+  if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
+  const b = (await readJson(req)) || {};
+  if (p === '/api/flips/cancel') return run(res, () => items.flipCancel(id, b.id));
+  if (busyItems.has(id)) return send(res, 409, { error: 'Your last item action is still finishing.' });
+  busyItems.add(id);
+  try {
+    if (p === '/api/items/deposit') return await run(res, () => items.deposit(id, b.tokens));
+    if (p === '/api/items/withdraw') return await run(res, () => items.withdraw(id, b.uids));
+    if (p === '/api/flips/create') return await run(res, () => items.flipCreate(id, name, b.uids, b.side));
+    if (p === '/api/flips/join') return await run(res, () => items.flipJoin(id, name, b.id, b.uids));
+    return send(res, 404, { error: 'Not found' });
+  } finally { busyItems.delete(id); }
+}
+async function limitsRoute(req, res, p) {
+  const u = authed(req, res); if (!u) return;
+  if (req.method === 'GET' && p === '/api/limits') return send(res, 200, limits.status(u.roblox_id));
+  const b = (await readJson(req)) || {};
+  if (req.method === 'POST' && p === '/api/limits/heartbeat') return send(res, 200, limits.heartbeat(u.roblox_id, b.seconds, b.net));
+  if (req.method === 'POST' && p === '/api/limits') { try { return send(res, 200, limits.update(u.roblox_id, b)); } catch (e) { return send(res, 400, { error: e.message }); } }
+  return send(res, 404, { error: 'Not found' });
+}
+async function legalRoute(req, res) {
+  const u = authed(req, res); if (!u) return;
+  const b = (await readJson(req)) || {};
+  if (b.doc === 'tos' && b.version === LEGAL.tos) db.prepare('UPDATE users SET tos_version = ? WHERE roblox_id = ?').run(LEGAL.tos, u.roblox_id);
+  else if (b.doc === 'cds' && b.version === LEGAL.cds) db.prepare('UPDATE users SET cds_version = ? WHERE roblox_id = ?').run(LEGAL.cds, u.roblox_id);
+  else return send(res, 400, { error: 'Unknown document or version.' });
+  log('accepted', b.doc, b.version, u.roblox_id);
+  return send(res, 200, { ok: true });
+}
 const moving = new Set();
 async function gameWallet(req, res) {
   const s = sessionUser(req); if (!s || !s.user) return send(res, 401, { error: 'Not signed in' });
@@ -262,7 +331,7 @@ function readRaw(req) {
   });
 }
 async function readJson(req) { try { return JSON.parse((await readRaw(req)).toString('utf8')); } catch { return null; } }
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.md': 'text/plain; charset=utf-8' };
 function serveStatic(req, res) {
   const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   let file = path.normalize(path.join(CFG.publicDir, url === '/' ? 'index.html' : url));
@@ -288,6 +357,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/me') return me(req, res);
     if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true, storage: CFG.db.startsWith('/data') || (process.env.RAILWAY_VOLUME_MOUNT_PATH && CFG.db.startsWith(process.env.RAILWAY_VOLUME_MOUNT_PATH)) ? 'volume' : 'local', offlineTransfers: bridge.enabled() });
     if (req.method === 'GET' && p === '/api/game/wallet') return await gameWallet(req, res);
+    if (p.startsWith('/api/items/') || p === '/api/flips' || p.startsWith('/api/flips/')) return await itemsRoute(req, res, p);
+    if (p === '/api/limits' || p.startsWith('/api/limits/')) return await limitsRoute(req, res, p);
+    if (req.method === 'POST' && p === '/api/legal/accept') return await legalRoute(req, res);
     if (req.method === 'POST' && p === '/api/game/deposit') return await gameMove(req, res, 'deposit');
     if (req.method === 'POST' && p === '/api/game/withdraw') return await gameMove(req, res, 'withdraw');
     if (p.startsWith('/api/')) return send(res, 404, { error: 'Not found' });

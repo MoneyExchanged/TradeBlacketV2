@@ -69,13 +69,13 @@ function showGate(mode='up'){
     $$('[data-gt]',g).forEach(b=>b.classList.toggle('on',b.dataset.gt===mode));
     body().innerHTML=`<h2>${mode==='up'?'Create your account':'Welcome back'}</h2><p class="muted" style="margin:0 0 18px">${mode==='up'?'Sign up with your Roblox username. There is no password: we verify you with a short phrase in your Roblox profile.':'Sign in with your Roblox username and a fresh bio phrase.'}</p>
     <form id="gf" class="mstack"><label class="fld"><span>Roblox username</span><input class="txt" id="un" autocomplete="username" maxlength="20" value="${esc(name)}" placeholder="e.g. TradeKing"></label>
-    ${mode==='up'?`<label class="check"><input type="checkbox" id="age"> I am 16 or older</label><label class="check"><input type="checkbox" id="rules"> I agree to the <button type="button" data-open="rules" style="color:var(--blue-hi)">House rules</button></label>`:''}
+    ${mode==='up'?`<label class="check"><input type="checkbox" id="age"> I am 16 or older</label><label class="check"><input type="checkbox" id="rules"> I agree to the <button type="button" class="lnk" data-legal="tos">Terms of Service</button> and the <button type="button" class="lnk" data-legal="license">License Agreement</button></label>`:''}
     <div class="err" id="er"></div><button class="cta">Continue</button></form>`;
     const un=$('#un',g);un.focus();
     $('#gf',g).onsubmit=e=>{e.preventDefault();const v=un.value.trim(),er=$('#er',g);
       if(!/^[A-Za-z0-9_]{3,20}$/.test(v)){er.textContent='Roblox usernames are 3 to 20 letters, numbers or underscores.';return}
       if(mode==='up'&&!$('#age',g).checked){er.textContent='You need to be 16 or older to sign up.';return}
-      if(mode==='up'&&!$('#rules',g).checked){er.textContent='Please agree to the House rules to continue.';return}
+      if(mode==='up'&&!$('#rules',g).checked){er.textContent='Please agree to the Terms of Service and License Agreement to continue.';return}
       name=v;s2()};
   }
   let tok=null;
@@ -100,7 +100,7 @@ function showGate(mode='up'){
   async function s3(){
     body().innerHTML=`<div class="center"><div class="spin"></div><h2>Checking ${esc(name)}</h2><p class="muted">Looking for your phrase in the About section…</p></div>`;
     if(tok){
-      let j={};try{const r=await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok})});j=await r.json();if(!r.ok)throw 0}
+      let j={};try{const r=await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mode==='up'?{token:tok,acceptTos:LEGAL_V.tos}:{token:tok})});j=await r.json();if(!r.ok)throw 0}
       catch{if(!g.innerHTML)return;const msg=j.error||'Could not reach TradeBlacket. Try again.';if(/expired/i.test(msg)){s1();$('#er',g).textContent=msg;return}
         body().innerHTML=`<div class="center"><h2>Not yet</h2><p class="muted" style="margin:0 0 20px">${esc(msg)}</p><div class="mstack"><button class="cta" id="again">Verify again</button><button class="cta ghost" id="bk2">Back</button></div></div>`;
         $('#again',g).onclick=s3;$('#bk2',g).onclick=s1;return}
@@ -108,7 +108,7 @@ function showGate(mode='up'){
     }else await sleep(1600);
     if(!g.innerHTML)return;
     const fresh=mode==='up';
-    S.user={name};S.guest=false;if(fresh){S.stats.joined=Date.now();bonus(500)}save();drawWho();
+    S.user={name};S.guest=false;if(fresh){S.stats.joined=Date.now();bonus(500);S.legal={...(S.legal||{}),tos:LEGAL_V.tos}}save();drawWho();
     body().innerHTML=`<div class="center"><div class="ok">${ic('check',30,2.4)}</div><h2>${fresh?'Account created':'Signed in'}</h2><p class="muted" style="margin:0 0 20px">${fresh?'You got a 500 Rodux welcome bonus to start with.':`Welcome back, ${esc(name)}.`}</p><button class="cta" id="enter">Enter TradeBlacket</button></div>`;
     $('#enter',g).onclick=()=>{close();go('home');if(fresh){confetti(innerWidth/2,innerHeight/3,110);addChat({sys:1,u:{name:'TradeBlacket'},text:`Welcome ${name}! Say hi in chat.`})}};
   }
@@ -146,7 +146,7 @@ PAGES.home=el=>{
     <section class="card"><div class="feed-h"><h3 class="sec">Live bets</h3><div class="tabs" id="ftabs"><button data-t="all" class="${feedTab==='all'?'on':''}">All</button><button data-t="big" class="${feedTab==='big'?'on':''}">Big wins</button><button data-t="me" class="${feedTab==='me'?'on':''}">Mine</button></div></div><div id="feed"></div></section>
     <section class="card lb"><h3 class="sec">Top multipliers today</h3><ol id="board"></ol></section>
   </div>
-  <footer class="foot"><div><b style="color:var(--fg);font-size:15px">Trade<span style="color:var(--accent)">Blacket</span></b><p>The case and casino site for Trade Empire players. Only for players aged 16 and over.</p></div><nav><button data-go="news">News</button><button data-open="rules">House rules</button><button data-open="fair">Fairness</button><button data-go="rewards">Rewards</button></nav></footer>`;
+  <footer class="foot"><div><b style="color:var(--fg);font-size:15px">Trade<span style="color:var(--accent)">Blacket</span></b><p>The case and casino site for Trade Empire players. Only for players aged 16 and over.</p></div><nav><button data-go="news">News</button><button data-open="rules">House rules</button><button data-open="fair">Fairness</button><button data-go="settings">Responsible play</button><button data-legal="tos">Terms of Service</button><button data-legal="license">License Agreement</button><button data-legal="cds">Currency Deduction Service</button></nav></footer>`;
   const setSlide=i=>{HOME.slide=i;$$('.slide',el).forEach((s,k)=>s.classList.toggle('on',k===i));$$('.dots button',el).forEach((s,k)=>s.classList.toggle('on',k===i))};
   $$('.dots button',el).forEach(b=>b.onclick=()=>setSlide(+b.dataset.sl));
   $$('#ftabs button').forEach(b=>b.onclick=()=>{feedTab=b.dataset.t;$$('#ftabs button').forEach(x=>x.classList.toggle('on',x===b));drawFeed()});

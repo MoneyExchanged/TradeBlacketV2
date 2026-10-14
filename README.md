@@ -40,6 +40,14 @@ It needs an Open Cloud API key in `ROBLOX_OPEN_CLOUD_KEY` with DataStore **Read 
 Without a key the website falls back to in-game transfers only. `npm run test:bridge` runs it
 against a fake data store.
 
+## Limiteds, coinflips and limits
+
+- **Limiteds wallet** (`items.js`): reads the player's Trade Empire inventory from `PlayerStore_v1` and moves chosen copies between the save and the site, with the same staged, stamped, conditional-write safety as Rodux. Item names and values come from `ItemStore_v1`. Items are refused while the player is in game, while game mail (such as a market sale) is waiting, while held (3 days), or while listed on `MarketStore_v1`.
+  - The Open Cloud key needs **Read Entry** on `ItemStore_v1`, `MarketStore_v1` and `ProfileMail_v1`, on top of read/create/update on `PlayerStore_v1`.
+- **Limited Flip**: player-versus-player coinflips with items. The joiner matches the creator's value within 10%. The result is `sha256(seed:joinerId:flipId)`, first byte, even = Crown, with the seed's hash shown up front. No house fee; items only change owner, so supply never changes.
+- **Responsible play** (`limits.js`): screen time, reality checks, deposit caps, item caps, largest bet, loss limit, breaks and self-exclusion. Stricter changes apply now, looser ones after 24 hours. Withdrawals are never blocked. The loss limit uses the net the browser reports until games move to the server.
+- **Legal**: Terms of Service, License Agreement and Trade Empire Currency Deduction Service live in `public/account.js`. Acceptance is stored per user (`tos_version`, `cds_version`). Have them reviewed by a lawyer.
+
 ## Going live
 
 1. **Host it over https.** Roblox only calls https addresses. Any Node host works (Railway, Fly.io, Render, a VPS behind Caddy). Keep `tradeblacket.db` on a persistent disk and back it up.

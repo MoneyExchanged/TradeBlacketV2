@@ -45,6 +45,8 @@ let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
   save('77', profile(1000, { deposited: 0, withdrawn: 0, pending: [] }));
 
   let r = await call('/api/game/wallet'); assert.equal(r.body.balance, 1000); assert.equal(r.body.inGame, false); ok('reads the Trade Empire balance while offline');
+  r = await call('/api/game/deposit', { amount: 400 }); assert.equal(r.status, 403); assert.match(r.body.error, /Deduction Service/); assert.equal(game('77').Data.pBalance, 1000); ok('deposits are refused until the Deduction Service is accepted');
+  const me0 = await call('/api/me'); await call('/api/legal/accept', { doc: 'tos', version: me0.body.legal.versions.tos }); await call('/api/legal/accept', { doc: 'cds', version: me0.body.legal.versions.cds });
   r = await call('/api/game/deposit', { amount: 400 }); assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(game('77').Data.pBalance, 600); assert.equal(game('77').Data.siteWallet.deposited, 400); assert.equal(site(77).balance, 400);
   assert.equal(game('77').Extra, 'kept'); assert.deepEqual(game('77').Data.inventory, { '12': 3 }); ok('offline deposit: game -400, site +400, the rest of the save untouched');

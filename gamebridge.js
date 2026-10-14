@@ -3,8 +3,8 @@
 //
 // Why this is safe:
 //   - It only writes a save nobody has open. ProfileStore marks a save as in use while a game
-//     server holds it (MetaData.ActiveSession). If that mark is there, we refuse and the player
-//     uses the in-game TradeBlacket button instead.
+//     server holds it (MetaData.ActiveSession). If that mark is there, we refuse and ask the player
+//     to leave Trade Empire first. The game itself takes no part in transfers.
 //   - Every write is conditional on the exact version we read (matchVersion). If a game server
 //     opened the save in between, the write is rejected and nothing changes.
 //   - It keeps the game's own books: siteWallet.deposited / siteWallet.withdrawn change exactly as
@@ -34,11 +34,12 @@ const BASE = () => `https://apis.roblox.com/datastores/v1/universes/${CFG.univer
 
 class BridgeError extends Error { constructor(msg, code, extra) { super(msg); this.code = code || 400; this.extra = extra; } }
 
-async function ocGet(userId) {
-  const url = `${BASE()}?datastoreName=${encodeURIComponent(CFG.store)}&entryKey=${encodeURIComponent(String(userId))}`;
-  const r = await fetch(url, { headers: { 'x-api-key': CFG.key } });
+async function ocGet(userId, store) {
+  const url = `${BASE()}?datastoreName=${encodeURIComponent(store || CFG.store)}&entryKey=${encodeURIComponent(String(userId))}`;
+  const r = await fetch(url, { headers: { 'x-api-key': CFG.key }, signal: AbortSignal.timeout(15000) });
   if (r.status === 404) return null;
-  if (!r.ok) throw new BridgeError(`Roblox answered ${r.status} reading the save`, 502);
+  if (r.status === 401 || r.status === 403) throw new BridgeError(`The Open Cloud key cannot read ${store || CFG.store}. Give it Read Entry on that data store.`, 503, { permission: store || CFG.store });
+  if (!r.ok) throw new BridgeError(`Roblox answered ${r.status} reading ${store || 'the save'}`, 502);
   const text = await r.text();
   return {
     value: JSON.parse(text),
@@ -48,9 +49,9 @@ async function ocGet(userId) {
   };
 }
 // 'ok' | 'conflict' | 'unknown' (we cannot tell whether it landed)
-async function ocSet(userId, entry) {
+async function ocSet(userId, entry, store) {
   const body = JSON.stringify(entry.value);
-  const url = `${BASE()}?datastoreName=${encodeURIComponent(CFG.store)}&entryKey=${encodeURIComponent(String(userId))}&matchVersion=${encodeURIComponent(entry.version)}`;
+  const url = `${BASE()}?datastoreName=${encodeURIComponent(store || CFG.store)}&entryKey=${encodeURIComponent(String(userId))}&matchVersion=${encodeURIComponent(entry.version)}`;
   const headers = { 'x-api-key': CFG.key, 'content-type': 'application/json', 'content-md5': crypto.createHash('md5').update(body).digest('base64') };
   if (entry.attrs) headers['roblox-entry-attributes'] = entry.attrs;
   if (entry.userIds) headers['roblox-entry-userids'] = entry.userIds;
@@ -87,7 +88,7 @@ function stamp(value, id) {
 }
 const stamped = (value, id) => !!(value && value.TradeBlacket && Array.isArray(value.TradeBlacket.applied) && value.TradeBlacket.applied.includes(id));
 
-function create({ db, tx, log, siteWithdrawable }) {
+function create({ db, tx, log, siteWithdrawable, guard }) {
   db.exec(`CREATE TABLE IF NOT EXISTS offline_transfers (
     id TEXT PRIMARY KEY, kind TEXT NOT NULL, roblox_id INTEGER NOT NULL, amount INTEGER NOT NULL,
     status TEXT NOT NULL, created_at INTEGER NOT NULL, done_at INTEGER, note TEXT)`);
@@ -126,13 +127,14 @@ function create({ db, tx, log, siteWithdrawable }) {
     if (!enabled()) throw new BridgeError('Transfers from the website are not set up yet.', 503);
     if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1e12) throw new BridgeError('Enter a whole amount of Rodux.');
     if (q.busy.get(robloxId).n > 0) throw new BridgeError('Your last transfer is still finishing. Try again in a moment.', 409);
+    if (guard) { const why = guard(robloxId, kind, amount); if (why) throw new BridgeError(why, 403, { limit: true }); }
     const id = newId();
     for (let attempt = 0; attempt < 4; attempt++) {
       const entry = await ocGet(robloxId);
       if (!entry) throw new BridgeError('We could not find your Trade Empire save. Join Trade Empire once first.', 404);
       const s = readSave(entry, now());
-      if (s.inGame) throw new BridgeError('You are in Trade Empire right now. Use the TradeBlacket button in the game, or leave the game and try again here.', 409, { inGame: true });
-      if (s.pendingCount >= CFG.maxPending) throw new BridgeError('You have transfers waiting in Trade Empire. Join the game once so they can finish.', 409);
+      if (s.inGame) throw new BridgeError('You are in Trade Empire right now, and the game keeps your save open while you play. Leave the game, wait a few seconds, then try again.', 409, { inGame: true });
+      if (s.pendingCount >= CFG.maxPending) throw new BridgeError('You have old transfers waiting in Trade Empire. Join the game once so they can finish.', 409);
       const data = entry.value.Data;
       data.siteWallet = data.siteWallet && typeof data.siteWallet === 'object' ? data.siteWallet : { deposited: 0, withdrawn: 0, pending: [] };
       if (!Array.isArray(data.siteWallet.pending)) data.siteWallet.pending = [];
@@ -194,4 +196,4 @@ function create({ db, tx, log, siteWithdrawable }) {
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-module.exports = { create, CFG, BridgeError };
+module.exports = { create, CFG, BridgeError, ocGet, ocSet, enabled, readSave, stamp, stamped, sleep };
