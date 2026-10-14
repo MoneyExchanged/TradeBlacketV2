@@ -74,6 +74,17 @@ The whole site is invite-only while `SITE_WAITLIST` is on (the default). Players
 - Staff actions (from a ticket or Admin, then Players): warn, suspend for 1 to 90 days, kick (sign out everywhere), ban, terminate, unban, let in, remove access, note. The player sees every action except notes, in the ticket and on their standing. Banned, suspended and terminated players can still sign in to withdraw and to use Support.
 - **tradeblacket.com/tradeempire** shows the player their own Trade Empire account: standing bar and violation history, value over time, stats and their most valuable limiteds.
 
+## TradeBlacket Business
+
+`business.js`, at **tradeblacket.com/business**: a separate black-and-gold space for content creators.
+
+1. Sign in with Roblox (bio verification, the same account as the site).
+2. Join the registry: creator name, channel links, audience, Discord, a description. Moderators approve or decline in Admin, then Business. Approval gives the gold **Business** role (profile, chat, the top bar), site access, direct support, the feature request board and YouTube verification (a phrase in the channel description, checked from the server; staff can also verify by hand).
+3. Apply for **TEPP** (Trade Empire Partner Program). Approval makes them a **Partner**.
+4. Partners create their **Business Card** (name, tagline, finish, links; card number `TBB XXXX XXXX XXXX`).
+
+Staff pay a card in US dollars or Rodux and hand partners giveaway gift cards. A partner withdraws card money as Rodux on TradeBlacket (withdrawable to Trade Empire like deposited Rodux; dollars convert at the gift card rate) or as limiteds TradeBlacket owns (house listings move to the partner's Limiteds, nothing is created). Every step, payout and withdrawal is in the player log.
+
 ## Gift cards and money display
 
 `giftcards.js`. Admins (Admin, then Gift cards) make $5, $10, $100 or $500 cards (`TBG-XXXX-XXXX-XXXX`, single use, optional expiry and a note for the creator or giveaway) and hand them to content creators. Players cannot buy them; they redeem a code on the Gift card page.

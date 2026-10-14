@@ -14,7 +14,8 @@
    ========================================================= */
 const TE={place:82632312078859,name:'Trade Empire'}; // change place to the live game's id
 const WAPI={live:false,me:null,seen:null};
-(async()=>{
+// WAPI.ready settles once we know whether a server is there (and, if so, who is signed in).
+WAPI.ready=(async()=>{
   try{
     const c=new AbortController();setTimeout(()=>c.abort(),2500);
     const r=await fetch('/api/health',{signal:c.signal,credentials:'same-origin'});

@@ -16,6 +16,7 @@ function swClose(welcome){
   if(welcome){toast("You're in. Welcome to TradeBlacket.",'win');confetti(innerWidth/2,innerHeight/3,120)}
 }
 async function siteGate(){
+  if(window.BIZ_MODE){swClose();return}   // TradeBlacket Business has its own screen
   if(!S.user){swClose();return}
   // Wait until the sign-in screen is closed, so the player sees "Signed in" first.
   if($('#gate')&&$('#gate').innerHTML.trim()){SW.wait=1;return}
@@ -40,7 +41,7 @@ function drawSiteWait(){
       <div class="wl-place sw-card"><span class="sw-who">${avatar(me(),40)}<b>${esc(S.user.name)}</b></span>
         <button class="cta inline" id="swwr">Withdraw Rodux</button><button class="cta ghost inline" id="swwi">Withdraw limiteds</button><button class="cta ghost inline" id="swsup">Open a Support ticket</button></div>
     </div>
-    <div class="sw-foot"><button id="swo">Sign out</button><button data-legal="tos">Terms of Service</button><button data-away="support">Support</button><button data-away="tradeempire">Trade Empire account</button><span>Signed in as ${esc(S.user.name)}</span></div></div>`;
+    <div class="sw-foot"><button id="swo">Sign out</button><button data-legal="tos">Terms of Service</button><button data-away="support">Support</button><button data-away="tradeempire">Trade Empire account</button><button data-biz>TradeBlacket Business</button><span>Signed in as ${esc(S.user.name)}</span></div></div>`;
     $('#swwr',el).onclick=()=>openWallet('withdraw');$('#swwi',el).onclick=()=>openInventory('site');
     $('#swsup',el).onclick=()=>swAway('support');
     $('#swo',el).onclick=swSignOut;return}
@@ -61,7 +62,7 @@ function drawSiteWait(){
         ${s.joined?`<div class="sw-ref"><b>Invite friends</b><span>Get ${fmt0(REF_REWARD())} Rodux for every friend who signs up with your link and gets in.</span><button class="cta ghost inline" data-copy="${esc(refLink())}">Copy my invite link</button></div>`:''}
       </div>
     </div>
-    <div class="sw-foot"><button id="swo">Sign out</button><button data-legal="tos">Terms of Service</button><button data-away="support">Support</button><button data-away="tradeempire">Trade Empire account</button><span>Signed in as ${esc(S.user.name)}</span></div>
+    <div class="sw-foot"><button id="swo">Sign out</button><button data-legal="tos">Terms of Service</button><button data-away="support">Support</button><button data-away="tradeempire">Trade Empire account</button><button data-biz>TradeBlacket Business</button><span>Signed in as ${esc(S.user.name)}</span></div>
   </div>`;
   const j=$('#swj',el);if(j)j.onclick=async()=>{j.disabled=true;
     if(WAPI.live){const r=await api('/api/site-waitlist/join',{});if(!r.ok){j.disabled=false;return toast(r.j.error||'Could not join. Try again.','loss')}SW.s=r.j}
@@ -96,12 +97,13 @@ function swChart(cv){
 PAGES.admin=(el,tab)=>{
   const isAdmin=(WAPI.me&&WAPI.me.admin)||(SW.s&&SW.s.admin);
   if(!isAdmin){el.innerHTML=`<div class="empty"><h3>Admins only</h3><p>This page is for the TradeBlacket team.</p></div>`;return}
-  const tb=String(tab||''),t=['slots','bans','gifts'].includes(tb)?tb:tb.startsWith('players')?'players':'site';
+  const tb=String(tab||''),t=['slots','bans','gifts','business'].includes(tb)?tb:tb.startsWith('players')?'players':'site';
   el.innerHTML=`<div class="page-h"><div><div class="crumb"><button data-go="home">Home</button> / Admin</div><h2>Admin</h2><p>Let players in, make access codes and see who is waiting.</p></div></div>
-    <div class="mk-tabs lx-seg adm-seg" style="--n:5;--i:${['site','slots','bans','players','gifts'].indexOf(t)}"><button data-go="admin" data-p="site" class="${t==='site'?'on':''}">Site waitlist</button><button data-go="admin" data-p="slots" class="${t==='slots'?'on':''}">Slots waitlist</button><button data-go="admin" data-p="bans" class="${t==='bans'?'on':''}">Bans</button><button data-go="admin" data-p="players" class="${t==='players'?'on':''}">Players</button><button data-go="admin" data-p="gifts" class="${t==='gifts'?'on':''}">Gift cards</button><i></i></div>
+    <div class="mk-tabs lx-seg adm-seg" style="--n:6;--i:${['site','slots','bans','players','gifts','business'].indexOf(t)}"><button data-go="admin" data-p="site" class="${t==='site'?'on':''}">Site waitlist</button><button data-go="admin" data-p="slots" class="${t==='slots'?'on':''}">Slots waitlist</button><button data-go="admin" data-p="bans" class="${t==='bans'?'on':''}">Bans</button><button data-go="admin" data-p="players" class="${t==='players'?'on':''}">Players</button><button data-go="admin" data-p="gifts" class="${t==='gifts'?'on':''}">Gift cards</button><button data-go="admin" data-p="business" class="${t==='business'?'on':''}">Business</button><i></i></div>
     <section class="wl-admin" id="adm"></section>`;
   if(t==='players'){admPlayersTab($('#adm',el),tb.split(':')[1]||'');return}
   if(t==='gifts'){admGifts($('#adm',el));return}
+  if(t==='business'){admBusiness($('#adm',el));return}
   if(WAPI.live)(t==='bans'?drawBans($('#adm',el)):drawAdmin($('#adm',el),t));else $('#adm',el).innerHTML=`<div class="empty"><h3>Admin tools run on the live site</h3><p>Letting players in and making codes need the TradeBlacket server.</p></div>`;
 };
 
@@ -126,7 +128,7 @@ async function drawBans(box){
 // TB_GATE stays "invite-only" until the server answers that the site is open to everyone, so a
 // failed or slow check never lets anyone in. The sign-in screen cannot be removed while signed out.
 (async()=>{try{const r=await fetch('/api/site-waitlist',{credentials:'same-origin',cache:'no-store'});if(r.ok){const j=await r.json();if(j&&j.gate===false)window.TB_GATE=false}}catch{}})();
-function swNeedSignIn(){return !S.user&&window.TB_GATE!==false}
+function swNeedSignIn(){return !S.user&&window.TB_GATE!==false&&!window.BIZ_MODE}
 {const g=$('#gate');if(g)new MutationObserver(()=>{if(swNeedSignIn()&&!g.innerHTML.trim())setTimeout(()=>{if(swNeedSignIn()&&!$('#gate').innerHTML.trim())showGate('in')},50)}).observe(g,{childList:true})}
 {const g0=go;go=function(...a){if(swNeedSignIn()){S.guest=false;if(!$('#gate').innerHTML.trim())showGate('in');return}return g0.apply(this,a)}}
 // a signed-out visitor who still had "guest" saved gets the sign-in screen

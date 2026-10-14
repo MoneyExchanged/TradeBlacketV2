@@ -421,6 +421,22 @@ function create({ db, tx, log, guard, note = () => {} }) {
     log('market buy', robloxId, id);
     return { ok: true, balance: qm.user.get(robloxId).balance };
   }
+  // A creator payout in limiteds: copies TradeBlacket owns (listed by the house) move to the creator,
+  // who can withdraw them to their Trade Empire save. Nothing is created; the listing price is the cost.
+  function houseListings() { return qm.all.all().filter(l => l.seller === HOUSE); }
+  function houseGive(robloxId, listingIds, check) {
+    const ids = [...new Set((Array.isArray(listingIds) ? listingIds : []).map(String))].slice(0, 20);
+    if (!ids.length) throw new BridgeError('Pick at least one item.');
+    return tx(() => {
+      const ls = ids.map(id => qm.one.get(id));
+      if (ls.some(l => !l || l.seller !== HOUSE)) throw new BridgeError('One of those items was just taken. Refresh and pick again.');
+      const total = ls.reduce((s, l) => s + l.price, 0);
+      check(total);
+      for (const l of ls) { qm.drop.run(l.id); q.setOwner.run(robloxId, now(), l.uid); }
+      q.addMove.run(newId('mv-'), 'payout', robloxId, JSON.stringify(ls.map(l => l.uid)), total, 'ok', now());
+      return { total, uids: ls.map(l => l.uid) };
+    });
+  }
   async function marketList(viewer) {
     const L = qm.all.all();
     const d = await describe(L.map(l => ({ uid: l.uid, itemId: l.item_id, serial: l.serial })));
@@ -432,7 +448,7 @@ function create({ db, tx, log, guard, note = () => {} }) {
     let total = 0; for (const r of q.mine.all(robloxId)) { const c = cat.get(r.item_id); if (c) total += c.value; } return total;
   }
 
-  return { describe, saveInventory, siteInventory, deposit, withdraw, flipCreate, flipJoin, flipCancel, flipList, siteItemValue, sellQuote: async (id, u) => { const r = await sellQuote(id, u); return { value: r.value, payout: r.payout }; }, sellToHouse, list, unlist, buy, marketList, _test: { ownedCopies } };
+  return { houseListings, houseGive, describe, saveInventory, siteInventory, deposit, withdraw, flipCreate, flipJoin, flipCancel, flipList, siteItemValue, sellQuote: async (id, u) => { const r = await sellQuote(id, u); return { value: r.value, payout: r.payout }; }, sellToHouse, list, unlist, buy, marketList, _test: { ownedCopies } };
 }
 
 module.exports = { create, STORES, HOLD_SECONDS };

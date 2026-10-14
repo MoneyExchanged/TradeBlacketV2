@@ -237,10 +237,11 @@ function me(req, res) {
     legal: { tos: u.tos_version === LEGAL.tos, cds: u.cds_version === LEGAL.cds, versions: LEGAL },
     limits: limits.status(u.roblox_id), itemValue: items.siteItemValue(u.roblox_id),
     studio: provider.recent(u.roblox_id), slots: waitlist.status(u.roblox_id), site: { gate: SITE_GATE, access: siteOk(u.roblox_id) },
+    business: business.badge(u.roblox_id),
     banned: ban ? { reason: ban.reason, at: ban.created_at, kind: ban.kind || 'ban', until: ban.expires_at || null } : null, referral: { code: referrals.codeFor(u.roblox_id), reward: referrals.REWARD },
     walletId: social.walletId(u.roblox_id), tier: (social.tier(u.roblox_id).catch(() => {}), u.tier || null), admin: waitlist.isAdmin(u.roblox_id),
     // in-game transfers and website (offline) transfers together, newest first
-    transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id)).concat(referrals.payouts(u.roblox_id)).concat(gifts.payouts(u.roblox_id))
+    transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id)).concat(referrals.payouts(u.roblox_id)).concat(gifts.payouts(u.roblox_id)).concat(business.payouts(u.roblox_id))
       .sort((a, b) => b.created_at - a.created_at).slice(0, 25),
   });
 }
@@ -329,7 +330,7 @@ async function waitlistRoute(req, res, p) {
 const GBX = require('./gamebridge.js');
 const social = require('./social.js').create({
   db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), secret: CFG.secret,
-  uploadDir: path.join(path.dirname(CFG.db), 'uploads'), forPlayer: s => account.forPlayer(s),
+  uploadDir: path.join(path.dirname(CFG.db), 'uploads'), forPlayer: s => account.forPlayer(s), badge: id => business.badge(id),
   readSave: async id => { if (!GBX.enabled()) return null; const e = await GBX.ocGet(String(id), process.env.ROBLOX_DATASTORE || 'PlayerStore_v1'); return e && e.value; },
 });
 // A player's whole account (Roblox, Trade Empire save, TradeBlacket) and staff actions on it.
@@ -341,6 +342,39 @@ const plog = require('./playerlog.js').create({ db, isAdmin: id => waitlist.isAd
 // Gift cards ($5 / $10 / $100 / $500), made by admins and redeemed for Rodux at the game's Rodux price.
 const gifts = require('./giftcards.js').create({ db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), universe: GBX.CFG.universe || 10108739296,
   isBanned: id => security.isBanned(id), siteOk: id => siteOk(id), note: (...a) => plog.add(...a) });
+// TradeBlacket Business: creator registry, the Trade Empire Partner Program, Business Cards and payouts.
+const business = require('./business.js').create({ db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), secret: CFG.secret, rate: () => gifts.rate(),
+  items, siteList, isBanned: id => security.isBanned(id), note: (...a) => plog.add(...a), gifts });
+async function businessRoute(req, res, p) {
+  const u = authed(req, res); if (!u) return;
+  const id = u.roblox_id, b = req.method === 'POST' ? (await readJson(req)) || {} : {};
+  let m;
+  try {
+    if (p.startsWith('/api/admin/business')) {
+      if (req.method === 'GET' && p === '/api/admin/business') return send(res, 200, business.adminView(id));
+      if (req.method === 'POST' && p === '/api/admin/business/decide') return send(res, 200, business.decide(id, b));
+      if (req.method === 'POST' && p === '/api/admin/business/payout') return send(res, 200, business.payout(id, b));
+      if (req.method === 'POST' && p === '/api/admin/business/codes') return send(res, 200, business.giveCodes(id, b));
+      if (req.method === 'POST' && p === '/api/admin/business/request') return send(res, 200, business.setRequest(id, b));
+      if (req.method === 'POST' && p === '/api/admin/business/youtube') return send(res, 200, business.setYoutube(id, b));
+      return send(res, 404, { error: 'Not found' });
+    }
+    if (req.method === 'GET' && p === '/api/business/me') return send(res, 200, business.view(id));
+    if (req.method === 'GET' && p === '/api/business/shop') return send(res, 200, await business.shop());
+    if (req.method !== 'POST') return send(res, 404, { error: 'Not found' });
+    security.limit(req, 'biz', 60, 10 * 60e3);
+    if (p === '/api/business/apply') return send(res, 200, business.apply(id, b));
+    if (p === '/api/business/tepp') return send(res, 200, business.applyTepp(id, b));
+    if (p === '/api/business/card') return send(res, 200, business.saveCard(id, b));
+    if (p === '/api/business/youtube') return send(res, 200, business.ytStart(id, b.channel));
+    if (p === '/api/business/youtube/verify') return send(res, 200, await business.ytVerify(id));
+    if (p === '/api/business/withdraw') return send(res, 200, business.withdrawRodux(id, b.from, b.amount));
+    if (p === '/api/business/withdraw-items') return send(res, 200, business.withdrawItems(id, b.listings));
+    if (p === '/api/business/requests') return send(res, 200, { requests: business.addRequest(id, b) });
+    if ((m = p.match(/^\/api\/business\/requests\/(\d+)\/vote$/))) return send(res, 200, { requests: business.vote(id, m[1]) });
+  } catch (e) { if (e instanceof business.BizError || e instanceof security.SecError || e instanceof gifts.GiftError) return send(res, e.code, { error: e.message }); throw e; }
+  return send(res, 404, { error: 'Not found' });
+}
 async function socialRoute(req, res, p) {
   const s = sessionUser(req), me = s && s.user ? s.user.roblox_id : null;
   try {
@@ -554,6 +588,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && p === '/api/games') { try { return send(res, 200, await provider.games()); } catch (e) { log('games', e.message); return send(res, 200, { enabled: true, games: [], error: 'Games are loading. Try again shortly.' }); } }
     if (req.method === 'POST' && p === '/api/games/launch') return await gamesLaunch(req, res);
+    if (p.startsWith('/api/business/') || p === '/api/admin/business' || p.startsWith('/api/admin/business/')) return await businessRoute(req, res, p);
     if (p === '/api/waitlist' || p.startsWith('/api/waitlist/') || p === '/api/site-waitlist' || p.startsWith('/api/site-waitlist/') || p.startsWith('/api/admin/')) return await waitlistRoute(req, res, p);
     if (p === '/api/profile' || p.startsWith('/api/profile/') || p === '/api/support' || p.startsWith('/api/support/')) return await socialRoute(req, res, p);
     if (req.method === 'POST' && p === '/api/auth/start') return await authStart(req, res);
