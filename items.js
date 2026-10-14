@@ -47,7 +47,7 @@ function create({ db, tx, log, guard }) {
     CREATE INDEX IF NOT EXISTS flips_status ON flips (status, created_at DESC);
   `);
   const q = {
-    mine: db.prepare("SELECT * FROM site_items WHERE owner = ? AND status IN ('held','flip','in','out') ORDER BY created_at DESC"),
+    mine: db.prepare("SELECT * FROM site_items WHERE owner = ? AND status IN ('held','flip','in','out','market') ORDER BY created_at DESC"),
     byUid: db.prepare('SELECT * FROM site_items WHERE uid = ?'),
     live: db.prepare("SELECT * FROM site_items WHERE item_id = ? AND serial = ? AND status != 'gone'"),
     addItem: db.prepare('INSERT INTO site_items (uid, item_id, serial, owner, status, origin, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)'),
@@ -345,11 +345,91 @@ function create({ db, tx, log, guard }) {
     });
     return { open: open.map(out), recent: done.map(out) };
   }
+  /* ---------- the limiteds market and selling to TradeBlacket ---------- */
+  // Real Trade Empire copies only: what players deposited, or what they sold to TradeBlacket.
+  // Buying moves that exact copy to the buyer, who can then withdraw it to their save. Nothing is
+  // ever created. Selling to TradeBlacket pays 90% of the item's value in Rodux that can be
+  // withdrawn like deposited Rodux; TradeBlacket then lists the copy at its full value.
+  db.exec(`CREATE TABLE IF NOT EXISTS item_listings (id TEXT PRIMARY KEY, uid TEXT NOT NULL UNIQUE, seller INTEGER NOT NULL, price INTEGER NOT NULL, created_at INTEGER NOT NULL)`);
+  const HOUSE = 0, SELL_RATE = 0.9;
+  const qm = {
+    all: db.prepare('SELECT l.*, s.item_id, s.serial, u.username FROM item_listings l JOIN site_items s ON s.uid = l.uid LEFT JOIN users u ON u.roblox_id = l.seller ORDER BY l.price DESC LIMIT 300'),
+    one: db.prepare('SELECT * FROM item_listings WHERE id = ?'),
+    add: db.prepare('INSERT INTO item_listings (id, uid, seller, price, created_at) VALUES (?,?,?,?,?)'),
+    drop: db.prepare('DELETE FROM item_listings WHERE id = ?'),
+    user: db.prepare('SELECT * FROM users WHERE roblox_id = ?'),
+    // Rodux a player receives from items counts as deposited, so it can be withdrawn.
+    pay: db.prepare('UPDATE users SET balance = balance + ?, deposited = deposited + ? WHERE roblox_id = ?'),
+    // Rodux spent on items no longer counts toward what can be withdrawn.
+    charge: db.prepare('UPDATE users SET balance = balance - ?, deposited = MAX(withdrawn, deposited - ?) WHERE roblox_id = ?'),
+  };
+  async function sellQuote(robloxId, uids) {
+    const { rows, value } = await stake(robloxId, uids);
+    if (value < 1) throw new BridgeError('Those items have no value yet, so they cannot be sold.');
+    return { rows, value, payout: Math.floor(value * SELL_RATE) };
+  }
+  async function sellToHouse(robloxId, uids) {
+    const { rows, value, payout } = await sellQuote(robloxId, uids);
+    const I = await infos(rows.map(r => r.item_id));
+    tx(() => {
+      rows.forEach(r => { const c = q.byUid.get(r.uid); if (c.status !== 'held' || c.owner !== robloxId) throw new BridgeError('One of those items is not available.'); });
+      rows.forEach(r => {
+        q.setOwner.run(HOUSE, now(), r.uid); q.setStatus.run('market', now(), r.uid);
+        qm.add.run(newId('lst-'), r.uid, HOUSE, Math.max(1, I[r.item_id].value), now());
+      });
+      qm.pay.run(payout, payout, robloxId);
+      q.addMove.run(newId('mv-'), 'sell', robloxId, JSON.stringify(rows.map(r => r.uid)), payout, 'ok', now());
+    });
+    log('sold to house', robloxId, rows.length, value, '->', payout);
+    return { sold: rows.length, value, payout, balance: qm.user.get(robloxId).balance };
+  }
+  function list(robloxId, uid, price) {
+    price = Math.floor(Number(price));
+    if (!Number.isSafeInteger(price) || price < 1 || price > 1e12) throw new BridgeError('Set a price in whole Rodux.');
+    tx(() => {
+      const r = q.byUid.get(String(uid));
+      if (!r || r.owner !== robloxId || r.status !== 'held') throw new BridgeError('That item is not available to list.');
+      q.setStatus.run('market', now(), r.uid); qm.add.run(newId('lst-'), r.uid, robloxId, price, now());
+    });
+    return { ok: true };
+  }
+  function unlist(robloxId, id) {
+    tx(() => {
+      const l = qm.one.get(String(id));
+      if (!l || l.seller !== robloxId) throw new BridgeError('That listing is not yours.');
+      qm.drop.run(l.id); q.setStatus.run('held', now(), l.uid);
+    });
+    return { ok: true };
+  }
+  function buy(robloxId, id) {
+    const l0 = qm.one.get(String(id));
+    if (!l0) throw new BridgeError('That item was just sold.');
+    if (l0.seller === robloxId) throw new BridgeError('That is your own listing.');
+    if (guard) { const why = guard(robloxId, 'play', l0.price); if (why) throw new BridgeError(why, 403, { limit: true }); }
+    tx(() => {
+      const l = qm.one.get(String(id)), u = qm.user.get(robloxId);
+      if (!l) throw new BridgeError('That item was just sold.');
+      if (!u || u.balance < l.price) throw new BridgeError('Not enough Rodux for that item.');
+      qm.charge.run(l.price, l.price, robloxId);
+      if (l.seller !== HOUSE) qm.pay.run(l.price, l.price, l.seller);
+      qm.drop.run(l.id); q.setOwner.run(robloxId, now(), l.uid);
+      q.addMove.run(newId('mv-'), 'buy', robloxId, JSON.stringify([l.uid]), l.price, 'ok', now());
+    });
+    log('market buy', robloxId, id);
+    return { ok: true, balance: qm.user.get(robloxId).balance };
+  }
+  async function marketList(viewer) {
+    const L = qm.all.all();
+    const d = await describe(L.map(l => ({ uid: l.uid, itemId: l.item_id, serial: l.serial })));
+    const D = Object.fromEntries(d.map(x => [x.uid, x]));
+    return { sellRate: SELL_RATE, listings: L.map(l => ({ id: l.id, uid: l.uid, price: l.price, seller: l.seller === HOUSE ? 'TradeBlacket' : (l.username || 'Player'), mine: l.seller === viewer, itemId: l.item_id, serial: l.serial, name: D[l.uid].name, value: D[l.uid].value, img: D[l.uid].img, limitedType: D[l.uid].limitedType })) };
+  }
+
   function siteItemValue(robloxId) {
     let total = 0; for (const r of q.mine.all(robloxId)) { const c = cat.get(r.item_id); if (c) total += c.value; } return total;
   }
 
-  return { saveInventory, siteInventory, deposit, withdraw, flipCreate, flipJoin, flipCancel, flipList, siteItemValue, _test: { ownedCopies } };
+  return { saveInventory, siteInventory, deposit, withdraw, flipCreate, flipJoin, flipCancel, flipList, siteItemValue, sellQuote: async (id, u) => { const r = await sellQuote(id, u); return { value: r.value, payout: r.payout }; }, sellToHouse, list, unlist, buy, marketList, _test: { ownedCopies } };
 }
 
 module.exports = { create, STORES, HOLD_SECONDS };

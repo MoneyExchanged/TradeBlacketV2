@@ -155,15 +155,31 @@ const CASEDEF=[
   ['frost','Frostbite',196,'',[['cvisor',28],['lblade',22],['fhelm',20],['vphones',14],['swings',9],['shalo',5],['ihalo',1.6],['dtrophy',.4]]],
   ['empire','Empire Reserve',350,'Limited',[['pbox',25],['swings',20],['fhelm',18],['apup',15],['shalo',10],['eblade',6],['gwings',3.5],['mcrown',1.5],['ehelm',.8],['rwings',.15],['ecrown',.05]]],
   ['royal','Royal Treasury',272,'Limited',[['apup',24],['shalo',22],['eblade',18],['gwings',14],['mcrown',10],['ehelm',6],['ihalo',3.5],['rwings',1.8],['ecrown',.6],['dtrophy',.1]]],
-  ['daily','Daily Case',130,'',[['vcap',35],['tshade',25],['blob',18],['scap',12],['rkick',6],['mbox',3],['jpack',.9],['gchain',.1]]]
+  ['daily','Daily Case',130,'',[['vcap',35],['tshade',25],['blob',18],['scap',12],['rkick',6],['mbox',3],['jpack',.9],['gchain',.1]]],
+  ['penny','Penny Pack',30,'',[['vcap',40],['tshade',30],['canv',20],['blob',9],['pmask',1]]],
+  ['budget','Budget Box',210,'',[['vcap',30],['tshade',25],['canv',20],['sbag',14],['blob',8],['scap',2.5],['nshade',.5]]],
+  ['egg','Egg Hunt',330,'New',[['blob',40],['sbag',25],['epup',15],['cboard',8],['nmask',6],['apup',.8],['vcap',5.2]]],
+  ['spider','Spider Season',260,'New',[['nshade',38],['rkick',34],['lblade',15],['cboard',8],['swings',4.4],['gwings',.6]]],
+  ['fedora','Fedora Club',30,'New',[['scap',40],['jpack',25],['cvisor',18],['nmask',10],['vphones',6.6],['mcrown',.4]]],
+  ['sound','Headphone Haven',215,'New',[['bphones',30],['nshade',28],['gchain',20],['pbox',12],['swings',7],['vphones',3]]],
+  ['sword','Blade Runner',210,'New',[['mbox',30],['lblade',26],['cboard',20],['apup',10],['fhelm',10.2],['shalo',3],['eblade',.8]]],
+  ['midnight','Midnight',240,'',[['nshade',25],['vphones',20],['cvisor',20],['nmask',20],['swings',14],['eblade',1]]],
+  ['horns','Toxic Wasteland',140,'New',[['cboard',30],['pbox',25],['nmask',20],['fhelm',21],['gwings',4]]],
+  ['collector','Collector\'s Case',170,'',[['jpack',25],['gchain',22],['pbox',20],['swings',15],['fhelm',12],['shalo',5],['ehelm',1]]],
+  ['gamble','50/50',45,'Hot',[['vcap',50],['mcrown',50]]],
+  ['fed','Federation Reserve',265,'Limited',[['vphones',30],['apup',25],['fhelm',20],['shalo',15],['ihalo',8],['rwings',2]]],
+  ['valk','Valkyrie Vault',210,'Limited',[['eblade',30],['apup',25],['shalo',17],['ehelm',15],['gwings',10],['ihalo',3]]],
+  ['mythic','Mythic',350,'Limited',[['apup',40],['shalo',30],['eblade',20],['ihalo',6],['ecrown',3],['dtrophy',1]]],
+  ['highroller','High Roller',44,'Limited',[['gwings',35],['mcrown',30],['ehelm',20],['ihalo',10],['rwings',4],['dtrophy',1]]],
+  ['dominus','Dominus Dynasty',230,'Limited',[['shalo',30],['eblade',25],['gwings',20],['mcrown',17],['ecrown',6],['dtrophy',2]]]
 ];
 const CASES=CASEDEF.map(([id,n,h,tag,list])=>{const tw=list.reduce((a,x)=>a+x[1],0);const ev=list.reduce((a,[k,w])=>a+ITEM[k].v*w,0)/tw;return{id,n,h,tag,daily:id==='daily',items:list.map(([k,w])=>({id:k,p:w/tw})).sort((a,b)=>ITEM[b.id].v-ITEM[a.id].v),ev,price:id==='daily'?0:r2(ev/0.92)}});
 const CASE=Object.fromEntries(CASES.map(c=>[c.id,c]));
 const SHOP=CASES.filter(c=>!c.daily);
 const pickFrom=c=>{let r=rnd();for(const it of c.items){if((r-=it.p)<0)return it.id}return c.items[c.items.length-1].id};
 function chest(h){return `<svg class="case-box" viewBox="0 0 120 96" aria-hidden="true"><path d="M8 42a22 22 0 0 1 22-22h60a22 22 0 0 1 22 22z" fill="hsl(${h} 70% 62%)"/><path d="M22 28h76" stroke="#fff" stroke-width="3" opacity=".25" stroke-linecap="round"/><rect x="8" y="42" width="104" height="48" rx="9" fill="hsl(${h} 62% 44%)"/><rect x="8" y="42" width="104" height="10" fill="hsl(${h} 60% 26%)"/><rect x="8" y="80" width="104" height="10" rx="5" fill="hsl(${h} 60% 30%)"/><rect x="50" y="46" width="20" height="24" rx="4" fill="#0B1424"/><circle cx="60" cy="56" r="4" fill="hsl(${h} 90% 72%)"/><path d="M8 52h12v28H8zM100 52h12v28h-12z" fill="#F5B83D" opacity=".85"/></svg>`}
-const caseArt=c=>`<div class="case-art" style="--h:${c.h}"><div class="case-glow"></div><div class="case-top">${itemSvg(c.items[0].id)}</div>${chest(c.h)}</div>`;
-const caseThumb=(c,cls='',n=0)=>`<span class="cth ${cls}" style="--h:${c.h}" title="${esc(c.n)}">${chest(c.h)}${n>1?`<i>×${n}</i>`:''}</span>`;
+const caseArt=c=>`<div class="case-art" style="--h:${c.h}"><div class="case-glow"></div><div class="case-top">${itemSvg(c.items[0].id)}</div>${chest(c.h,c.id)}</div>`;
+const caseThumb=(c,cls='',n=0)=>`<span class="cth ${cls}" style="--h:${c.h}" title="${esc(c.n)}">${chest(c.h,c.id)}${n>1?`<i>×${n}</i>`:''}</span>`;
 
 /* ---------- games registry ---------- */
 const GAMES={
@@ -300,35 +316,47 @@ const resultBox=(big,small)=>`<div class="result"><div><b>${big}</b><span>${smal
 
 /* ---------- animated market background ---------- */
 (function bgfx(){
-  const cv=$('#bgfx'),ctx=cv.getContext('2d');let W=0,H=0,grid=null;
-  function size(){const d=Math.min(1.5,devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0);
-    grid=document.createElement('canvas');grid.width=W*d;grid.height=H*d;const g=grid.getContext('2d');g.scale(d,d);
-    g.strokeStyle='rgba(110,140,210,.06)';g.lineWidth=1;for(let x=0;x<W;x+=48){g.beginPath();g.moveTo(x+.5,0);g.lineTo(x+.5,H);g.stroke()}for(let y=0;y<H;y+=48){g.beginPath();g.moveTo(0,y+.5);g.lineTo(W,y+.5);g.stroke()}}
+  // A live market chart behind everything, in the spirit of TradingView's home page: a dotted grid,
+  // two soft glows, and one price line that keeps drawing itself to the right with a ticking label.
+  const cv=$('#bgfx'),ctx=cv.getContext('2d');let W=0,H=0,dpr=1,grid=null;
+  function size(){dpr=Math.min(1.5,devicePixelRatio||1);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+    grid=document.createElement('canvas');grid.width=W*dpr;grid.height=H*dpr;const g=grid.getContext('2d');g.scale(dpr,dpr);g.fillStyle='rgba(255,255,255,.07)';
+    for(let x=16;x<W;x+=28)for(let y=16;y<H;y+=28)g.fillRect(x,y,1,1)}
   size();addEventListener('resize',size);
-  const N=64;
-  const lines=[{c:'59,123,255',y:.58,a:1},{c:'139,92,246',y:.4,a:.7},{c:'47,211,138',y:.76,a:.55}].map(L=>{let v=0;L.p=[];for(let i=0;i<N;i++){v+=(rnd()-.5)*.05;v=Math.max(-.16,Math.min(.16,v));L.p.push(v)}return L});
-  const candles=Array.from({length:40},()=>({o:rnd(),c:rnd(),h:rnd(),l:rnd()}));
-  let off=0,last=0;
+  const N=150;let px=[],vel=0,val=100;for(let i=0;i<N;i++){vel=vel*.9+(rnd()-.47)*1.1;val+=vel;px.push(val)}
+  let ma=px.map((_,i)=>{const s=px.slice(Math.max(0,i-12),i+1);return s.reduce((a,b)=>a+b,0)/s.length});
+  let off=0,last=0,lo=0,hi=1;
+  const smooth=(arr,xf,yf)=>{ctx.moveTo(xf(0),yf(arr[0]));for(let i=1;i<arr.length-1;i++){const xc=(xf(i)+xf(i+1))/2,yc=(yf(arr[i])+yf(arr[i+1]))/2;ctx.quadraticCurveTo(xf(i),yf(arr[i]),xc,yc)}ctx.lineTo(xf(arr.length-1),yf(arr[arr.length-1]))};
   function frame(t){
-    requestAnimationFrame(frame);if(document.hidden||t-last<33)return;last=t;
+    requestAnimationFrame(frame);
+    if(document.hidden||t-last<33)return;last=t;
+    if(S.prefs&&S.prefs.bg===false){ctx.clearRect(0,0,W,H);return}
+    const step=W/(N-30);
+    if(!REDUCED){off+=.32;while(off>=step){off-=step;px.shift();vel=vel*.9+(rnd()-.47)*1.1;val=px[px.length-1]+vel;px.push(val);
+      const s=px.slice(-13);ma.shift();ma.push(s.reduce((a,b)=>a+b,0)/s.length)}}
+    const mn=Math.min(...px),mx=Math.max(...px);lo+=(mn-lo)*.05;hi+=(mx-hi)*.05;if(hi-lo<1)hi=lo+1;
+    const xf=i=>i*step-off,yf=v=>H*.86-(v-lo)/(hi-lo)*H*.5;
     ctx.clearRect(0,0,W,H);
-    [[.78,.12,620,'59,123,255',.24],[.12,.88,560,'139,92,246',.18],[.48,.6,460,'47,211,138',.07]].forEach(([gx,gy,r,c,a],i)=>{
-      const x=(gx+Math.sin(t/9000+i*2)*.06)*W,y=(gy+Math.cos(t/11000+i)*.05)*H,g=ctx.createRadialGradient(x,y,0,x,y,r);
+    [[.82,.08,W*.55,'41,98,255',.22],[.08,.95,W*.45,'156,107,255',.12]].forEach(([gx,gy,r,c,a],i)=>{
+      const x=(gx+Math.sin(t/12000+i*2)*.04)*W,y=(gy+Math.cos(t/14000+i)*.04)*H,g=ctx.createRadialGradient(x,y,0,x,y,r);
       g.addColorStop(0,`rgba(${c},${a})`);g.addColorStop(1,`rgba(${c},0)`);ctx.fillStyle=g;ctx.fillRect(0,0,W,H)});
-    ctx.drawImage(grid,0,0,W,H);
-    const seg=W/(N-6);
-    if(!REDUCED){off+=.45;if(off>=seg){off-=seg;lines.forEach(L=>{L.p.shift();let v=L.p[L.p.length-1]+(rnd()-.5)*.05;L.p.push(Math.max(-.18,Math.min(.18,v)))});candles.shift();candles.push({o:rnd(),c:rnd(),h:rnd(),l:rnd()})}}
-    // faint candles along the bottom
-    const cw=W/40;candles.forEach((k,i)=>{const x=i*cw-off*(cw/seg)+cw/2,base=H*.9,sc=H*.07,o=base-k.o*sc,c=base-k.c*sc,up=k.c>k.o;ctx.strokeStyle=up?'rgba(47,211,138,.18)':'rgba(255,77,106,.16)';ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.moveTo(x,Math.min(o,c)-k.h*sc*.4);ctx.lineTo(x,Math.max(o,c)+k.l*sc*.4);ctx.stroke();ctx.fillRect(x-cw*.28,Math.min(o,c),cw*.56,Math.max(2,Math.abs(o-c)))});
-    lines.forEach(L=>{
-      ctx.beginPath();L.p.forEach((p,i)=>{const x=i*seg-off,y=(L.y+p)*H;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});
-      const gr=ctx.createLinearGradient(0,0,W,0);gr.addColorStop(0,`rgba(${L.c},0)`);gr.addColorStop(.6,`rgba(${L.c},${.3*L.a})`);gr.addColorStop(1,`rgba(${L.c},${.85*L.a})`);
-      ctx.strokeStyle=gr;ctx.lineWidth=1.8;ctx.shadowColor=`rgba(${L.c},.9)`;ctx.shadowBlur=10;ctx.stroke();ctx.shadowBlur=0;
-      ctx.lineTo(W+seg,H);ctx.lineTo(0,H);ctx.closePath();const ag=ctx.createLinearGradient(0,L.y*H-120,0,H);ag.addColorStop(0,`rgba(${L.c},${.08*L.a})`);ag.addColorStop(1,`rgba(${L.c},0)`);ctx.fillStyle=ag;ctx.fill();
-      const k=Math.min(L.p.length-1,Math.floor((W*.86+off)/seg)),hx=k*seg-off,hy=(L.y+L.p[k])*H,pu=(t/900)%1;
-      ctx.fillStyle=`rgba(${L.c},${L.a})`;ctx.beginPath();ctx.arc(hx,hy,3.2,0,7);ctx.fill();
-      ctx.strokeStyle=`rgba(${L.c},${(1-pu)*.6*L.a})`;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(hx,hy,4+pu*16,0,7);ctx.stroke();
-    });
+    if(grid)ctx.drawImage(grid,0,0,W,H);
+    // area
+    ctx.beginPath();smooth(px,xf,yf);ctx.lineTo(xf(N-1),H);ctx.lineTo(xf(0),H);ctx.closePath();
+    const ag=ctx.createLinearGradient(0,H*.3,0,H);ag.addColorStop(0,'rgba(41,98,255,.20)');ag.addColorStop(1,'rgba(41,98,255,0)');ctx.fillStyle=ag;ctx.fill();
+    // moving average
+    ctx.beginPath();smooth(ma,xf,yf);ctx.strokeStyle='rgba(156,107,255,.28)';ctx.lineWidth=1.2;ctx.setLineDash([4,6]);ctx.stroke();ctx.setLineDash([]);
+    // price line
+    ctx.beginPath();smooth(px,xf,yf);const lg=ctx.createLinearGradient(0,0,W,0);lg.addColorStop(0,'rgba(41,98,255,0)');lg.addColorStop(.45,'rgba(41,98,255,.55)');lg.addColorStop(1,'rgba(120,170,255,1)');
+    ctx.strokeStyle=lg;ctx.lineWidth=2;ctx.shadowColor='rgba(41,98,255,.9)';ctx.shadowBlur=16;ctx.stroke();ctx.shadowBlur=0;
+    // last price: dashed level, pulsing head, label
+    const k=Math.min(N-1,Math.floor((W*.78+off)/step)),hx=xf(k),hy=yf(px[k]),up=px[k]>=px[k-1];
+    ctx.strokeStyle='rgba(120,170,255,.25)';ctx.setLineDash([3,5]);ctx.beginPath();ctx.moveTo(hx,hy);ctx.lineTo(W,hy);ctx.stroke();ctx.setLineDash([]);
+    const pu=(t/1100)%1;ctx.fillStyle='#8DB6FF';ctx.beginPath();ctx.arc(hx,hy,3.5,0,7);ctx.fill();
+    ctx.strokeStyle=`rgba(141,182,255,${(1-pu)*.7})`;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(hx,hy,4+pu*18,0,7);ctx.stroke();
+    const lbl=(px[k]*12.34).toFixed(2),tw=ctx.measureText(lbl).width+16;ctx.font='600 11px Manrope,system-ui,sans-serif';
+    ctx.fillStyle=up?'rgba(38,166,154,.9)':'rgba(239,83,80,.9)';ctx.beginPath();ctx.roundRect?ctx.roundRect(W-tw-10,hy-10,tw,20,5):ctx.rect(W-tw-10,hy-10,tw,20);ctx.fill();
+    ctx.fillStyle='#fff';ctx.fillText(lbl,W-tw-2,hy+4);
   }
   requestAnimationFrame(frame);
 })();
@@ -416,7 +444,7 @@ function openMenu(btn){
   if(m.innerHTML){closeMenu();return}
   const L=lvl();
   m.innerHTML=`<div class="pop" style="top:${r.bottom+8}px;right:${Math.max(12,innerWidth-r.right)}px"><div class="ph2">${avatar(me(),38)}<div><b>${esc(S.user.name)}</b><span>Level ${L} · ${fmt0(S.stats.wagered)} wagered</span></div></div><hr>
-    <button data-go="profile">${ic('profile',17)}Profile</button><button data-go="inventory">${ic('inventory',17)}Inventory <span class="lv" style="margin-left:auto">${S.inv.length}</span></button><button data-wallet="deposit">${ic('tag',17)}Wallet</button><button data-inv="site">${ic('inventory',17)}Trade Empire limiteds</button><button data-go="settings">${ic('shield',17)}Responsible play</button><button data-go="rewards">${ic('rewards',17)}Rewards</button><hr>
+    <button data-go="profile">${ic('profile',17)}Profile</button><button data-go="inventory">${ic('inventory',17)}Inventory <span class="lv" style="margin-left:auto">${S.inv.length}</span></button><button data-wallet="deposit">${ic('tag',17)}Wallet</button><button data-inv="site">${ic('inventory',17)}Trade Empire limiteds</button><button data-go="prefs">${ic('edit',17)}Settings</button><button data-go="support">${ic('chat',17)}Support</button><button data-go="settings">${ic('shield',17)}Responsible play</button><button data-go="rewards">${ic('rewards',17)}Rewards</button><hr>
     <button id="lo">${ic('logout',17)}Sign out</button></div>`;
   $('#lo',m).onclick=()=>{if(typeof WAPI!=='undefined'&&WAPI.live)fetch('/api/auth/logout',{method:'POST'}).catch(()=>{});S.user=null;save();drawWho();closeMenu();toast('Signed out.');if(cur==='profile')go('home')};
   setTimeout(()=>document.addEventListener('click',function h(e){if(!e.target.closest('.pop')&&e.target.closest('#who')!==btn.parentElement){closeMenu()}if(!$('#menu').innerHTML)document.removeEventListener('click',h)}),0);
@@ -460,7 +488,7 @@ $('#bal').textContent=fmt(S.bal);
 const NAVDEF=[
   ['Play',[['home','Home','home'],['cases','Cases','cases'],['battles','Case Battles','battles','live'],['upgrader','Upgrader','upgrader'],['flip','Limited Flip','coinflip','new'],['predictions','Predictions','predictions','new'],['stocks','Stocks','stocks','new'],['market','Marketplace','market']]],
   ['Casino',[['slots','Slots','slots','wait'],...ORIG.map(k=>[k,GAMES[k].n,k,['baccarat','limbo','hilo','keno','wheel'].includes(k)?'new':''])]],
-  ['Account',[['wallet','Wallet','tag'],['settings','Responsible play','shield'],['rewards','Rewards','rewards'],['inventory','Inventory','inventory'],['profile','Profile','profile'],['news','News','news']]]
+  ['Account',[['wallet','Wallet','tag'],['prefs','Settings','edit'],['support','Support','chat'],['docs','Docs','news'],['settings','Responsible play','shield'],['rewards','Rewards','rewards'],['inventory','Inventory','inventory'],['profile','Profile','profile'],['news','News','news']]]
 ];
 $('#nav').innerHTML=NAVDEF.map(([h,items])=>`<h6>${h}</h6>`+items.map(([k,l,icn,t])=>`<button data-go="${k}" title="${l}">${ic(icn,19)}<span>${l}</span>${t?`<i class="tg ${t}">${t==='live'?'Live':t==='wait'?'Waitlist':'New'}</i>`:''}</button>`).join('')).join('');
 $('#burger').onclick=()=>$('#app').classList.toggle('nav-open');

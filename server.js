@@ -226,6 +226,7 @@ function me(req, res) {
     legal: { tos: u.tos_version === LEGAL.tos, cds: u.cds_version === LEGAL.cds, versions: LEGAL },
     limits: limits.status(u.roblox_id), itemValue: items.siteItemValue(u.roblox_id),
     studio: provider.recent(u.roblox_id), slots: waitlist.status(u.roblox_id),
+    walletId: social.walletId(u.roblox_id), tier: (social.tier(u.roblox_id).catch(() => {}), u.tier || null), admin: waitlist.isAdmin(u.roblox_id),
     // in-game transfers and website (offline) transfers together, newest first
     transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id))
       .sort((a, b) => b.created_at - a.created_at).slice(0, 25),
@@ -268,6 +269,25 @@ async function waitlistRoute(req, res, p) {
   } catch (e) { if (e instanceof waitlist.WaitError) return send(res, e.code, { error: e.message }); throw e; }
   return send(res, 404, { error: 'Not found' });
 }
+const GBX = require('./gamebridge.js');
+const social = require('./social.js').create({
+  db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), secret: CFG.secret,
+  readSave: async id => { if (!GBX.enabled()) return null; const e = await GBX.ocGet(String(id), process.env.ROBLOX_DATASTORE || 'PlayerStore_v1'); return e && e.value; },
+});
+async function socialRoute(req, res, p) {
+  const s = sessionUser(req), me = s && s.user ? s.user.roblox_id : null;
+  try {
+    if (req.method === 'GET' && p.startsWith('/api/profile/')) return send(res, 200, await social.getProfile(decodeURIComponent(p.slice(13)), me));
+    if (!me) return send(res, 401, { error: 'Not signed in' });
+    const b = req.method === 'POST' ? (await readJson(req)) || {} : {};
+    if (req.method === 'POST' && p === '/api/profile') return send(res, 200, await social.updateProfile(me, b));
+    if (req.method === 'GET' && p === '/api/support') return send(res, 200, social.tickets(me));
+    if (req.method === 'POST' && p === '/api/support') return send(res, 200, social.openTicket(me, b));
+    let m;
+    if (req.method === 'POST' && (m = p.match(/^\/api\/support\/(TKT-[0-9A-F]{8})\/(reply|close)$/))) return send(res, 200, m[2] === 'reply' ? social.reply(me, m[1], b.body) : social.close(me, m[1]));
+  } catch (e) { if (e instanceof social.SocialError) return send(res, e.code, { error: e.message }); throw e; }
+  return send(res, 404, { error: 'Not found' });
+}
 const provider = require('./provider.js').create({ db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a), limits });
 async function gamesLaunch(req, res) {
   const u = authed(req, res); if (!u) return;
@@ -298,6 +318,7 @@ async function itemsRoute(req, res, p) {
   if (req.method === 'GET' && p === '/api/items/save') return run(res, () => items.saveInventory(id));
   if (req.method === 'GET' && p === '/api/items/site') return run(res, () => items.siteInventory(id));
   if (req.method === 'GET' && p === '/api/flips') return run(res, () => items.flipList(id));
+  if (req.method === 'GET' && p === '/api/items/market') return run(res, () => items.marketList(id));
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed' });
   const b = (await readJson(req)) || {};
   if (p === '/api/flips/cancel') return run(res, () => items.flipCancel(id, b.id));
@@ -308,6 +329,11 @@ async function itemsRoute(req, res, p) {
     if (p === '/api/items/withdraw') return await run(res, () => items.withdraw(id, b.uids));
     if (p === '/api/flips/create') return await run(res, () => items.flipCreate(id, name, b.uids, b.side));
     if (p === '/api/flips/join') return await run(res, () => items.flipJoin(id, name, b.id, b.uids));
+    if (p === '/api/items/sell-quote') return await run(res, () => items.sellQuote(id, b.uids));
+    if (p === '/api/items/sell') return await run(res, () => { const u = q.user.get(id); if (!u || u.tos_version !== LEGAL.tos) throw new bridge.BridgeError('Please accept the Terms of Service and License Agreement first.', 403); return items.sellToHouse(id, b.uids); });
+    if (p === '/api/items/list') return await run(res, () => items.list(id, b.uid, b.price));
+    if (p === '/api/items/unlist') return await run(res, () => items.unlist(id, b.id));
+    if (p === '/api/items/buy') return await run(res, () => items.buy(id, b.id));
     return send(res, 404, { error: 'Not found' });
   } finally { busyItems.delete(id); }
 }
@@ -369,6 +395,19 @@ async function flushIcons() {
     for (const id of part) { const url = found[id] || null; if (url) icons.set(id, { url, at: Date.now() }); batch.get(id).forEach(f => f(url)); }
   }
 }
+// /img/avatar/<userId>: the player's Roblox headshot, looked up and cached like item icons.
+const heads = new Map();
+async function avatarImage(req, res, raw) {
+  if (!/^\d{1,20}$/.test(raw)) return send(res, 404, { error: 'Not found' });
+  let c = heads.get(raw);
+  if (!c || Date.now() - c.at > 6 * 36e5) {
+    let url = null;
+    try { const r = await fetch(`https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds=${raw}&size=150x150&format=Png&isCircular=false`, { signal: AbortSignal.timeout(8000) }); if (r.ok) { const j = await r.json(); url = j.data && j.data[0] && j.data[0].imageUrl; } } catch {}
+    c = { url, at: Date.now() }; if (url) heads.set(raw, c);
+  }
+  if (!c.url) return send(res, 404, { error: 'No avatar' });
+  res.writeHead(302, { Location: c.url, 'Cache-Control': 'public, max-age=21600' }); return res.end();
+}
 async function assetImage(req, res, raw) {
   if (!/^\d{1,20}$/.test(raw)) return send(res, 404, { error: 'Not found' });
   const url = await iconUrl(raw);
@@ -422,6 +461,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/games') { try { return send(res, 200, await provider.games()); } catch (e) { log('games', e.message); return send(res, 200, { enabled: true, games: [], error: 'Games are loading. Try again shortly.' }); } }
     if (req.method === 'POST' && p === '/api/games/launch') return await gamesLaunch(req, res);
     if (p === '/api/waitlist' || p.startsWith('/api/waitlist/') || p.startsWith('/api/admin/')) return await waitlistRoute(req, res, p);
+    if (p === '/api/profile' || p.startsWith('/api/profile/') || p === '/api/support' || p.startsWith('/api/support/')) return await socialRoute(req, res, p);
     if (req.method === 'POST' && p === '/api/auth/start') return await authStart(req, res);
     if (req.method === 'POST' && p === '/api/auth/verify') return await authVerify(req, res);
     if (req.method === 'POST' && p === '/api/auth/logout') return logout(req, res);
@@ -435,6 +475,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/game/withdraw') return await gameMove(req, res, 'withdraw');
     if (p.startsWith('/api/')) return send(res, 404, { error: 'Not found' });
     if (req.method === 'GET' && p.startsWith('/img/asset/')) return await assetImage(req, res, p.slice(11));
+    if (req.method === 'GET' && p.startsWith('/img/avatar/')) return await avatarImage(req, res, p.slice(12));
     if (req.method === 'GET') return serveStatic(req, res);
     return send(res, 405, { error: 'Method not allowed' });
   } catch (e) {

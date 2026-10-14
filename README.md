@@ -63,6 +63,15 @@ against a fake data store.
 
 Slots are closed for now (`waitlist.js`). Players join a waitlist and keep the place they joined in; the first to join is #1. They get in when an admin lets the next players in, or straight away with an access code (`TB-XXXXX-XXXXX`). Admins are the Roblox accounts in `ADMIN_ROBLOX_IDS` (default: the owner, 496295513); an admin sees an Admin section on the Slots page to make codes, let players in and remove access. Studio games can only be launched by players with access.
 
+## Limiteds market, selling, profiles, support
+
+- **Limiteds market** (`items.js`): players list real Trade Empire copies they hold on the site for Rodux. Buying moves that exact copy to the buyer's Limiteds, where it can be withdrawn to their save. The seller's Rodux counts as deposited, so it can be withdrawn; the buyer's spent Rodux stops counting.
+- **Sell to TradeBlacket**: 90% of the item's Trade Empire value, paid as withdrawable Rodux. TradeBlacket lists the copy at full value. Nothing is ever created or destroyed.
+- **TradePlus** (`social.js`): read from the save (`Data.subscription = { tier, expiration }`); any active tier unlocks profile themes (banner, accents, effect, name style). Admins count as Diamond.
+- **Wallet ID**: `TBW-XXXX-XXXX`, derived from the Roblox id with the server secret. Safe to share; used by support.
+- **Support**: tickets with replies; admins see all tickets and answer as TradeBlacket Support.
+- **Pictures**: `/img/asset/<id>` (item icons) and `/img/avatar/<userId>` (Roblox headshots) redirect to Roblox's current image, cached six hours.
+
 ## Going live
 
 1. **Host it over https.** Roblox only calls https addresses. Any Node host works (Railway, Fly.io, Render, a VPS behind Caddy). Keep `tradeblacket.db` on a persistent disk and back it up.

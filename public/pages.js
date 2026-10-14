@@ -23,7 +23,8 @@ function drawBoard(){
   const top=FEED.filter(f=>f.payout>f.bet).sort((a,b)=>b.mult-a.mult).slice(0,7);
   el.innerHTML=top.map((f,i)=>`<li data-user="${esc(f.u.name)}"><span class="rk">${i+1}</span>${avatar(f.u,24)}<div style="min-width:0;display:flex;flex-direction:column"><span class="who">${esc(f.u.name)}</span><span class="gm">${GAMES[f.game].n} · ${fmt(f.payout)}</span></div><span class="x">${f.mult.toFixed(2)}×</span></li>`).join('');
 }
-const gameCard=k=>`<button class="gcard" data-go="${k}" style="background:${GAMES[k].bg}"><span class="gt">${GAMES[k].tag}</span><span class="art" aria-hidden="true">${GART[k]}</span><b>${GAMES[k].n}</b></button>`;
+for(const k of ORIG)GART[k]=gameArt(k);
+const gameCard=gameCardLx;
 
 /* ---------- sign-up gate ---------- */
 const WORDS2=['amber','harbor','otter','quiet','copper','lantern','maple','orbit','velvet','cobalt','meadow','tundra','pixel','summit','ember','willow','fable','granite'];
@@ -140,8 +141,10 @@ PAGES.home=el=>{
     <button data-go="market">${ic('market',20)}<span>Marketplace<small>${MK.list.length} items listed</small></span></button>
     <button data-go="upgrader">${ic('upgrader',20)}<span>Upgrader<small>Turn items into better ones</small></span></button>
   </div>
-  <div class="sec-h"><h3 class="sec">${ic('dice',18)}Originals</h3><button class="more" data-go="crash">See all</button></div>
-  <div class="games">${ORIG.slice(0,7).map(gameCard).join('')}</div>
+  <div class="sec-h"><h3 class="sec">${ic('dice',18)}Game modes</h3></div>
+  <div class="modes">${GMODES.map(modeCard).join('')}</div>
+  <div class="sec-h"><h3 class="sec">${ic('dice',18)}Originals</h3><span class="note">${ORIG.length} games</span></div>
+  <div class="games all">${ORIG.map(gameCard).join('')}</div>
   <div class="sec-h"><h3 class="sec">${ic('slots',18)}Slots</h3><button class="more" data-go="slots">All slots</button></div>
   <div class="slot-lobby">${Object.entries(MACHINES).map(([k,M])=>`<button class="slot-card" data-go="slot" data-p="${k}" style="background:${M.bg}"><span class="sym">${['H4','W','S'].map(s=>machineSym(k,s)).join('')}</span><b>${M.n}</b><span>${M.d}</span></button>`).join('')}</div>
   <div class="sec-h"><h3 class="sec">${ic('cases',18)}Popular cases</h3><button class="more" data-go="cases">View all</button></div>
@@ -154,7 +157,7 @@ PAGES.home=el=>{
     <section class="card"><div class="feed-h"><h3 class="sec">Live bets</h3><div class="tabs" id="ftabs"><button data-t="all" class="${feedTab==='all'?'on':''}">All</button><button data-t="big" class="${feedTab==='big'?'on':''}">Big wins</button><button data-t="me" class="${feedTab==='me'?'on':''}">Mine</button></div></div><div id="feed"></div></section>
     <section class="card lb"><h3 class="sec">Top multipliers today</h3><ol id="board"></ol></section>
   </div>
-  <footer class="foot"><div><b style="color:var(--fg);font-size:15px">Trade<span style="color:var(--accent)">Blacket</span></b><p>The case and casino site for Trade Empire players. Only for players aged 18 and over.</p></div><nav><button data-go="news">News</button><button data-open="rules">House rules</button><button data-open="fair">Fairness</button><button data-go="settings">Responsible play</button><button data-legal="tos">Terms of Service</button><button data-legal="license">License Agreement</button><button data-legal="cds">Currency Deduction Service</button></nav></footer>`;
+  <footer class="foot"><div><b style="color:var(--fg);font-size:15px">Trade<span style="color:var(--accent)">Blacket</span></b><p>The case and casino site for Trade Empire players. Only for players aged 18 and over.</p></div><nav><button data-go="news">News</button><button data-open="rules">House rules</button><button data-open="fair">Fairness</button><button data-go="docs">Docs</button><button data-go="support">Support</button><button data-go="settings">Responsible play</button><button data-legal="tos">Terms of Service</button><button data-legal="license">License Agreement</button><button data-legal="cds">Currency Deduction Service</button></nav></footer>`;
   const setSlide=i=>{HOME.slide=i;$$('.slide',el).forEach((s,k)=>s.classList.toggle('on',k===i));$$('.dots button',el).forEach((s,k)=>s.classList.toggle('on',k===i))};
   $$('.dots button',el).forEach(b=>b.onclick=()=>setSlide(+b.dataset.sl));
   $$('#ftabs button').forEach(b=>b.onclick=()=>{feedTab=b.dataset.t;$$('#ftabs button').forEach(x=>x.classList.toggle('on',x===b));drawFeed()});

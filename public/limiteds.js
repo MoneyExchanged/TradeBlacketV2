@@ -46,11 +46,11 @@ async function openInventory(view='site',o={}){
       <label class="inv-sort"><select id="isort" aria-label="Sort"><option value="hi">Highest value</option><option value="lo">Lowest value</option><option value="az">Name A to Z</option><option value="new">Serial number</option></select></label></div>
     <div class="inv-note" id="inote" hidden></div>
     <div class="inv-grid" id="igrid"><div class="inv-load"><div class="spin"></div></div></div>
-    <div class="inv-foot"><button class="inv-all" id="iall">Select all</button><span class="inv-sum" id="isel"></span><button class="inv-go" id="igo"><span id="igl">Withdraw</span><i></i>${HEX(15)}<b id="igv">0</b></button></div>`,{cls:'invm lux'});
+    <div class="inv-foot"><button class="inv-all" id="iall">Select all</button><span class="inv-sum" id="isel"></span><button class="inv-all inv-x" id="ilist" hidden>List for sale</button><button class="inv-all inv-x" id="isell" hidden>Sell to TradeBlacket</button><button class="inv-go" id="igo"><span id="igl">Withdraw</span><i></i>${HEX(15)}<b id="igv">0</b></button></div>`,{cls:'invm lux'});
   const R=m.root;
   const items=()=>{const d=LTD.data[LTD.view];return d&&d.items?d.items:[]};
   const idOf=x=>LTD.view==='site'?x.uid:x.token;
-  const blocked=x=>LTD.view==='game'?(x.heldUntil>Date.now()?`Held · ${holdLeft(x.heldUntil)}`:x.listed?'Listed on the market':null):(x.status&&x.status!=='held'?({flip:'In a coinflip',in:'Arriving',out:'Leaving'}[x.status]||x.status):null);
+  const blocked=x=>LTD.view==='game'?(x.heldUntil>Date.now()?`Held · ${holdLeft(x.heldUntil)}`:x.listed?'Listed on the market':null):(x.status&&x.status!=='held'?({flip:'In a coinflip',in:'Arriving',out:'Leaving',market:'Listed for sale'}[x.status]||x.status):null);
   function list(){
     let L=items().filter(x=>{const q=LTD.q;return!q||(q.startsWith('#')?String(x.serial).startsWith(q.slice(1)):x.name.toLowerCase().includes(q))});
     L=[...L].sort(LTD.sort==='lo'?(a,b)=>a.value-b.value:LTD.sort==='az'?(a,b)=>a.name.localeCompare(b.name):LTD.sort==='new'?(a,b)=>a.serial-b.serial:(a,b)=>b.value-a.value);
@@ -78,6 +78,7 @@ async function openInventory(view='site',o={}){
     foot();
   }
   function foot(){
+    {const site=LTD.view==='site',n=LTD.sel.size;$('#isell',R).hidden=!site;$('#ilist',R).hidden=!site;$('#isell',R).disabled=!n||LTD.busy;$('#ilist',R).disabled=n!==1||LTD.busy;if(!n){sellArm=null;$('#isell',R).textContent='Sell to TradeBlacket'}}
     const sel=items().filter(x=>LTD.sel.has(idOf(x))),v=sel.reduce((a,x)=>a+x.value,0);
     $('#igv',R).textContent=fmtV(v);$('#igo',R).disabled=!sel.length||LTD.busy;
     $('#iall',R).textContent=sel.length?'Clear':'Select all';$('#isel',R).innerHTML=sel.length?`<b>${sel.length}</b> selected`:'Pick the items to move';
@@ -106,6 +107,31 @@ async function openInventory(view='site',o={}){
     if(ok){toast(site?`${ids.length} item${ids.length>1?'s':''} sent to your ${TE.name} inventory`:`${ids.length} item${ids.length>1?'s':''} added to your TradeBlacket inventory`,'win');LTD.sel.clear();await ltdLoad('site',true);await ltdLoad('game',true);drawInvCount&&drawInvCount()}
     else toast(msg||'Nothing was moved.','loss');
     if(R.isConnected)draw();
+  };
+  let sellArm=null;
+  $('#isell',R).onclick=async()=>{
+    const ids=[...LTD.sel],btn=$('#isell',R);if(!ids.length||LTD.busy)return;
+    if(!sellArm||sellArm.key!==ids.join()){
+      let q;if(WAPI.live){const r=await api('/api/items/sell-quote',{uids:ids});if(!r.ok)return toast(r.j.error,'loss');q=r.j}
+      else{const v=items().filter(x=>ids.includes(x.uid)).reduce((a,x)=>a+x.value,0);q={value:v,payout:Math.floor(v*.9)}}
+      sellArm={key:ids.join(),q};btn.innerHTML=`Confirm: get ${chip(13)} ${fmtV(q.payout)}`;btn.classList.add('arm');return}
+    LTD.busy=true;btn.disabled=true;let ok=false,msg='';
+    if(WAPI.live){const r=await api('/api/items/sell',{uids:ids});ok=r.ok;msg=r.j.error;if(ok)await syncMe()}
+    else{const d=ltdDemo(),gone=d.site.filter(x=>ids.includes(x.uid));d.site=d.site.filter(x=>!ids.includes(x.uid));S.ltdMarket=[...gone.map(x=>({id:uid(),uid:x.uid,itemId:x.itemId,art:x.art,serial:x.serial,name:x.name,value:x.value,price:x.value,seller:'TradeBlacket'})),...(S.ltdMarket||[])];pay(sellArm.q.payout);save();ok=true}
+    LTD.busy=false;btn.classList.remove('arm');
+    if(ok){toast(`Sold for ${fmtV(sellArm.q.payout)} Rodux. You can withdraw it to Trade Empire.`,'win');LTD.sel.clear();sellArm=null;await ltdLoad('site',true)}else toast(msg||'Nothing was sold.','loss');
+    if(R.isConnected)draw();
+  };
+  $('#ilist',R).onclick=()=>{
+    const id=[...LTD.sel][0],x=items().find(i=>i.uid===id);if(!x)return;
+    const f=$('.inv-foot',R),keep=f.innerHTML;
+    f.innerHTML=`<span class="inv-sum">List <b>${esc(x.name)}</b> #${x.serial} (worth ${fmtV(x.value)}) for</span><div class="amt" style="width:220px">${chip(16)}<input id="ilp" type="number" min="1" step="1" value="${x.value||1}"></div><button class="inv-all" id="ilc">Cancel</button><button class="inv-go" id="ilg">List it</button>`;
+    const back=()=>{f.innerHTML=keep;openInventory('site')};
+    $('#ilc',R).onclick=back;
+    $('#ilg',R).onclick=async()=>{const price=Math.floor(+$('#ilp',R).value||0);if(price<1)return toast('Set a price in whole Rodux.','loss');
+      if(WAPI.live){const r=await api('/api/items/list',{uid:id,price});if(!r.ok)return toast(r.j.error,'loss')}
+      else{const d=ltdDemo();const it=d.site.find(i=>i.uid===id);it.status='market';S.ltdMarket=[{id:uid(),uid:id,itemId:it.itemId,art:it.art,serial:it.serial,name:it.name,value:it.value,price,seller:S.user.name,mine:true},...(S.ltdMarket||[])];save()}
+      toast('Listed on the Limiteds market.','win');back()};
   };
   load(true).then(()=>{if(o.auto&&R.isConnected)$('#igo',R).click()});
 }
@@ -204,3 +230,38 @@ async function showFlip(f,res){
   $('#fp',R).textContent=res.won?`All ${fmtV(res.pot)} in items are now in your TradeBlacket inventory.`:'Better luck on the next flip.';
   if(res.won)confetti(innerWidth/2,innerHeight/2,140);
 }
+
+/* ---------- Limiteds market (real Trade Empire copies) ---------- */
+async function ltdMarketLoad(){
+  if(WAPI.live){const r=await api('/api/items/market');return r.ok?r.j.listings:[]}
+  if(!S.ltdMarket){S.ltdMarket=[['gwings',8,'TradeBlacket'],['ihalo',402,'LunaTrades'],['eblade',77,'PixelMarlin'],['fhelm',90,'VaultVibes'],['swings',3,'TradeBlacket'],['apup',31,'Tradezilla']].map(([a,s,who])=>({id:uid(),uid:uid(),itemId:a,art:a,serial:s,name:ITEM[a].n,value:TEV[a],price:who==='TradeBlacket'?TEV[a]:Math.round(TEV[a]*(.9+rnd()*.25)),seller:who}));save()}
+  return S.ltdMarket;
+}
+function ltdMarketView(el){
+  let L=null,q='',sort='hi';
+  const draw=()=>{
+    if(!el.isConnected||!L)return;
+    let A=L.filter(x=>!q||x.name.toLowerCase().includes(q));A=A.sort(sort==='lo'?(a,b)=>a.price-b.price:sort==='deal'?(a,b)=>a.price/a.value-b.price/b.value:(a,b)=>b.price-a.price);
+    $('#lmg',el).innerHTML=A.length?A.map(x=>`<div class="lm-card t-${ltdTier(x.value)}"><span class="inv-ser">#${x.serial}</span>${isU(x)?'<i class="inv-u">U</i>':''}<div class="inv-pic">${ltdPic(x)}</div><b class="inv-n">${esc(x.name)}</b><span class="lm-val">Worth ${HEX(12)}${fmtV(x.value)}</span><div class="lm-buy"><span class="lm-price">${chip(14)}${fmtV(x.price)}</span>${x.mine?`<button class="cta ghost sm" data-lmu="${x.id}">Unlist</button>`:`<button class="cta sm" data-lmb="${x.id}">Buy</button>`}</div><span class="lm-seller">${x.seller==='TradeBlacket'?`${ic('shield',12,2.2)}Sold by TradeBlacket`:`Sold by ${esc(x.seller)}`}</span></div>`).join(''):`<div class="inv-empty"><b>Nothing listed yet</b><p>List items from your Limiteds, or sell them to TradeBlacket for 90% of their value.</p></div>`;
+  };
+  el.innerHTML=`<div class="lm-top card glass"><div><h3>Trade Empire limiteds</h3><p class="note">Real items from Trade Empire. Anything you buy lands in your Limiteds, ready to withdraw to your save.</p></div><div class="lm-tools"><label class="inv-search st-search">${ic('search',16)}<input id="lmq" placeholder="Search items"></label>${seg('lms',[['hi','Priciest'],['lo','Cheapest'],['deal','Best deal']],'hi')}<button class="cta inline" data-inv="site">${ic('plus',16,2.2)}Sell or list</button></div></div><div class="lm-grid" id="lmg"><div class="inv-load"><div class="spin"></div></div></div>`;
+  $('#lmq',el).oninput=e=>{q=e.target.value.trim().toLowerCase();draw()};
+  wireSeg($('#lms',el),v=>{sort=v;draw()});
+  el.onclick=async e=>{
+    const b=e.target.closest('[data-lmb]'),u=e.target.closest('[data-lmu]');
+    if(b){if(!S.user)return openLogin();const x=L.find(i=>i.id===b.dataset.lmb);b.disabled=true;
+      if(WAPI.live){const r=await api('/api/items/buy',{id:x.id});if(!r.ok){b.disabled=false;return toast(r.j.error,'loss')}await syncMe()}
+      else{if(!take(x.price)){b.disabled=false;return}S.ltdMarket=S.ltdMarket.filter(i=>i.id!==x.id);ltdDemo().site.unshift({uid:x.uid,itemId:x.itemId,art:x.art,serial:x.serial,name:x.name,value:x.value,status:'held'});save()}
+      toast(`${x.name} is in your Limiteds. Withdraw it to Trade Empire whenever you like.`,'win');L=await ltdMarketLoad();draw()}
+    if(u){const x=L.find(i=>i.id===u.dataset.lmu);
+      if(WAPI.live){const r=await api('/api/items/unlist',{id:x.id});if(!r.ok)return toast(r.j.error,'loss')}
+      else{S.ltdMarket=S.ltdMarket.filter(i=>i.id!==x.id);const it=ltdDemo().site.find(i=>i.uid===x.uid);if(it)it.status='held';save()}
+      toast('Listing removed.');L=await ltdMarketLoad();draw()}
+  };
+  ltdMarketLoad().then(r=>{L=r;draw()});
+}
+{const own=PAGES.market;PAGES.market=(el,p)=>{
+  const item=p&&p!=='ltd'&&p!=='site'?p:undefined,tab=item||p==='site'?'site':p==='ltd'?'ltd':(MK.tab||'ltd');MK.tab=tab;
+  el.innerHTML=`<div class="mk-tabs lx-seg${tab==='site'?' r':''}"><button data-go="market" data-p="ltd" class="${tab==='ltd'?'on':''}">Trade Empire limiteds</button><button data-go="market" data-p="site" class="${tab==='site'?'on':''}">TradeBlacket items</button><i></i></div><div id="mkb"></div>`;
+  const body=$('#mkb',el);tab==='ltd'?ltdMarketView(body):own(body,item);
+}}
