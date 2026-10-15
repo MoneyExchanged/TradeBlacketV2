@@ -6,6 +6,8 @@ const os = require('node:os'), path = require('node:path');
 process.env.GAME_WEBHOOK_SECRET = 'test-secret-0123456789abcdef';
 process.env.DB_PATH = path.join(os.tmpdir(), `tb-biz-${process.pid}.db`);
 process.env.ADMIN_ROBLOX_IDS = '1';
+process.env.TB_ORIGINS = 'https://test.tradeblacket.local';
+const crypto = require('node:crypto');
 const { server, db } = require('./server.js');
 let base; const jar = {};
 async function call(who, p, body) { const r = await fetch(base + p, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', ...(who ? { cookie: jar[who] } : {}) }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, body: await r.json() }; }
@@ -19,6 +21,7 @@ const APP = { name: 'Builder Bob', links: [{ platform: 'youtube', url: 'https://
   r = await call(2, '/api/business/apply', { ...APP, links: [{ platform: 'youtube', url: 'not a link' }] }); assert.equal(r.status, 400);
   r = await call(2, '/api/business/apply', { ...APP, agree: false }); assert.equal(r.status, 400); ok('applications need real links and the terms accepted');
   r = await call(2, '/api/business/apply', APP); assert.equal(r.body.status, 'pending'); r = await call(2, '/api/business/apply', APP); assert.equal(r.status, 400); ok('applying once puts you in review');
+  assert.equal(r.status, 400); r = await call(2, '/api/business/me'); assert.equal(r.body.review.position, 1); assert.equal(r.body.review.stage, 'member'); assert.equal(r.body.review.estimateMs, 48 * 36e5); assert.ok(r.body.review.expectedBy > Date.now()); ok('the status shows the place in the queue and an estimated wait');
   r = await call(2, '/api/business/tepp', { plan: 'x'.repeat(50), cadence: 'weekly', agree: true }); assert.equal(r.status, 403); ok('TEPP needs an approved membership');
   r = await call(3, '/api/admin/business/decide', { robloxId: 2, approve: true }); assert.equal(r.status, 403); ok('only moderators decide');
   r = await call(1, '/api/admin/business/decide', { robloxId: 2, approve: true, note: 'Welcome' }); assert.equal(r.body.members[0].status, 'approved');
@@ -46,6 +49,38 @@ const APP = { name: 'Builder Bob', links: [{ platform: 'youtube', url: 'https://
   r = await call(3, '/api/business/requests', { title: 'Hello there', body: 'I am not a member of the program.' }); assert.equal(r.status, 403); ok('non-members cannot');
   r = await call(2, '/api/business/youtube', { channel: '@builderbob' }); assert.match(r.body.youtube.phrase, /^TradeBlacket-[0-9A-F]{8}$/); assert.equal(r.body.youtube.url, 'https://www.youtube.com/@builderbob');
   r = await call(1, '/api/admin/business/youtube', { robloxId: 2, verified: true }); r = await call(2, '/api/me'); assert.equal(r.body.business.verified, true); ok('YouTube channels get a phrase to prove ownership, and staff can verify');
+  // paying with the card
+  db.prepare('UPDATE users SET balance = balance + 3000, deposited = deposited + 3000, bonus_lock = bonus_lock + 1000 WHERE roblox_id = 2').run();
+  let u = (await call(2, '/api/me')).body;
+  r = await call(2, '/api/business/topup', { amount: u.withdrawable + 1 }); assert.equal(r.status, 400); assert.match(r.body.error, /Bonus Rodux stays/);
+  r = await call(2, '/api/business/topup', { amount: 2000 }); assert.equal(r.body.toppedUp, 2000); assert.equal(r.body.balance.rodux, 2000);
+  let u2 = (await call(2, '/api/me')).body; assert.equal(u2.balance, u.balance - 2000); assert.ok(u2.transfers.some(t => t.kind === 'card-topup' && t.amount === 2000)); ok('partners top up the card from their withdrawable balance, never from bonus Rodux');
+  r = await call(2, '/api/business/settings', { paySource: 'card' }); assert.equal(r.body.pay.source, 'card'); ok('partners choose to pay with the card in settings');
+  r = await call(2, '/api/business/pay', { amount: 500, purpose: 'Withdraw to Trade Empire' }); assert.equal(r.body.paid, 500); assert.equal(r.body.balance.rodux, 1500);
+  u = (await call(2, '/api/me')).body; assert.equal(u.balance, u2.balance + 500); ok('with no confirmation set, a card payment goes straight through');
+  r = await call(2, '/api/business/security', { method: 'pin', pin: '12' }); assert.equal(r.status, 400);
+  r = await call(2, '/api/business/security', { method: 'pin', pin: '4821' }); assert.equal(r.body.pay.method, 'pin');
+  r = await call(2, '/api/business/pay', { amount: 100 }); assert.equal(r.status, 400);
+  r = await call(2, '/api/business/pay', { amount: 100, auth: { pin: '0000' } }); assert.equal(r.status, 403);
+  r = await call(2, '/api/business/pay', { amount: 100, auth: { pin: '4821' } }); assert.equal(r.body.paid, 100); ok('with a code, payments need the right code');
+  r = await call(2, '/api/business/security', { method: 'none' }); assert.equal(r.status, 400); ok('turning the code off needs the code');
+  for (let i = 0; i < 5; i++) r = await call(2, '/api/business/pay', { amount: 1, auth: { pin: '1111' } });
+  assert.equal(r.status, 429); r = await call(2, '/api/business/pay', { amount: 1, auth: { pin: '4821' } }); assert.equal(r.status, 429); ok('five wrong codes pause card payments');
+  db.prepare('UPDATE biz_members SET pin_lock = 0, pin_fail = 0 WHERE roblox_id = 2').run();
+  // a device passkey (what Windows Hello or Touch ID creates), simulated with an EC P-256 key
+  const ORIGIN = 'https://test.tradeblacket.local', RP = 'test.tradeblacket.local', kp = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const cd = (type, challenge) => Buffer.from(JSON.stringify({ type, challenge, origin: ORIGIN })).toString('base64url');
+  r = await call(2, '/api/business/passkey/options', { kind: 'register' });
+  r = await call(2, '/api/business/passkey/register', { id: 'cred_' + 'a'.repeat(20), alg: -7, publicKey: kp.publicKey.export({ format: 'der', type: 'spki' }).toString('base64url'), clientDataJSON: cd('webauthn.create', r.body.challenge), current: { pin: '4821' } });
+  assert.equal(r.body.pay.hasDevice, true, JSON.stringify(r.body));
+  const assertion = async (count, flags = 0x05) => { const o = (await call(2, '/api/business/passkey/options', { kind: 'pay' })).body; const c = cd('webauthn.get', o.challenge); const ad = Buffer.concat([crypto.createHash('sha256').update(RP).digest(), Buffer.from([flags]), Buffer.from([0, 0, 0, count])]);
+    const sig = crypto.sign('sha256', Buffer.concat([ad, crypto.createHash('sha256').update(Buffer.from(c, 'base64url')).digest()]), kp.privateKey); return { id: o.credentialId, authenticatorData: ad.toString('base64url'), clientDataJSON: c, signature: sig.toString('base64url') }; };
+  r = await call(2, '/api/business/security', { method: 'device', current: { pin: '4821' } }); assert.equal(r.body.pay.method, 'device');
+  r = await call(2, '/api/business/pay', { amount: 50, auth: { assertion: await assertion(1) } }); assert.equal(r.body.paid, 50, JSON.stringify(r.body)); ok('with a device, the server checks the passkey signature');
+  r = await call(2, '/api/business/pay', { amount: 50, auth: { assertion: await assertion(1) } }); assert.equal(r.status, 400); ok('a replayed device confirmation is refused');
+  r = await call(2, '/api/business/pay', { amount: 50, auth: { assertion: await assertion(5, 0x01) } }); assert.equal(r.status, 400); ok('the device has to confirm it was the owner (user verification)');
+  const other = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' }); const a2 = await assertion(9); a2.signature = crypto.sign('sha256', Buffer.from('x'), other.privateKey).toString('base64url');
+  r = await call(2, '/api/business/pay', { amount: 50, auth: { assertion: a2 } }); assert.equal(r.status, 400); ok('a signature from another key is refused');
   r = await call(1, '/api/admin/player?id=2'); assert.ok(r.body.events.some(e => /Business: Became a Trade Empire Partner/.test(e.title))); ok('every step is in the player log');
   console.log(`\nAll ${n} checks passed.`); server.close(); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

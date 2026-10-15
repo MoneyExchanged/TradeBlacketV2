@@ -344,7 +344,8 @@ const gifts = require('./giftcards.js').create({ db, tx, log: (...a) => log(...a
   isBanned: id => security.isBanned(id), siteOk: id => siteOk(id), note: (...a) => plog.add(...a) });
 // TradeBlacket Business: creator registry, the Trade Empire Partner Program, Business Cards and payouts.
 const business = require('./business.js').create({ db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), secret: CFG.secret, rate: () => gifts.rate(),
-  items, siteList, isBanned: id => security.isBanned(id), note: (...a) => plog.add(...a), gifts });
+  items, siteList, isBanned: id => security.isBanned(id), note: (...a) => plog.add(...a), gifts, withdrawable,
+  origins: String(process.env.TB_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean) });
 async function businessRoute(req, res, p) {
   const u = authed(req, res); if (!u) return;
   const id = u.roblox_id, b = req.method === 'POST' ? (await readJson(req)) || {} : {};
@@ -371,6 +372,12 @@ async function businessRoute(req, res, p) {
     if (p === '/api/business/withdraw') return send(res, 200, business.withdrawRodux(id, b.from, b.amount));
     if (p === '/api/business/withdraw-items') return send(res, 200, business.withdrawItems(id, b.listings));
     if (p === '/api/business/requests') return send(res, 200, { requests: business.addRequest(id, b) });
+    if (p === '/api/business/settings') return send(res, 200, business.setSource(id, b.paySource));
+    if (p === '/api/business/security') return send(res, 200, business.setSecurity(id, b));
+    if (p === '/api/business/passkey/options') return send(res, 200, business.passkeyOptions(id, b.kind));
+    if (p === '/api/business/passkey/register') return send(res, 200, business.passkeyRegister(id, b));
+    if (p === '/api/business/topup') return send(res, 200, business.topUp(id, b.amount));
+    if (p === '/api/business/pay') { security.limit(req, 'cardpay', 30, 10 * 60e3); return send(res, 200, business.pay(id, b.amount, b.auth, b.purpose)); }
     if ((m = p.match(/^\/api\/business\/requests\/(\d+)\/vote$/))) return send(res, 200, { requests: business.vote(id, m[1]) });
   } catch (e) { if (e instanceof business.BizError || e instanceof security.SecError || e instanceof gifts.GiftError) return send(res, e.code, { error: e.message }); throw e; }
   return send(res, 404, { error: 'Not found' });

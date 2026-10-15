@@ -9,7 +9,11 @@
 //      hand partners giveaway gift cards. A partner withdraws card money as Rodux to their
 //      TradeBlacket balance (withdrawable to Trade Empire like deposited Rodux) or as limiteds that
 //      TradeBlacket owns. Dollars become Rodux at the gift card rate (the game's own Rodux prices).
-// Every decision, payout and withdrawal is logged.
+// The card is also a way to pay: a partner can top it up from their TradeBlacket balance, and choose
+// (Settings) to pay withdrawals and purchases with the card instead of the balance. Each card payment
+// is confirmed the way they chose: nothing, a 4 to 6 digit code, or their device (Windows Hello,
+// Touch ID, Face ID: a WebAuthn passkey verified on the server).
+// Every decision, payout, top-up, payment and withdrawal is logged.
 'use strict';
 const crypto = require('node:crypto');
 
@@ -20,7 +24,7 @@ const PLATFORMS = ['youtube', 'tiktok', 'twitch', 'x', 'discord', 'other'];
 const ACCENTS = ['gold', 'champagne', 'rose', 'platinum', 'emerald'];
 const B32 = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
 
-function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList, isBanned, note = () => {}, gifts }) {
+function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList, isBanned, note = () => {}, gifts, withdrawable = () => 0, origins = [] }) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS biz_members (roblox_id INTEGER PRIMARY KEY, status TEXT NOT NULL, form TEXT NOT NULL, applied_at INTEGER NOT NULL, decided_at INTEGER, decided_by INTEGER, note TEXT,
       tepp TEXT NOT NULL DEFAULT 'none', tepp_form TEXT, tepp_at INTEGER, tepp_decided_at INTEGER, tepp_note TEXT,
@@ -31,6 +35,9 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
     CREATE TABLE IF NOT EXISTS biz_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, roblox_id INTEGER NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', reply TEXT, votes TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
   `);
   if (!db.prepare('PRAGMA table_info(gift_cards)').all().some(c => c.name === 'assigned_to')) db.exec('ALTER TABLE gift_cards ADD COLUMN assigned_to INTEGER');
+  { const c = db.prepare('PRAGMA table_info(biz_members)').all().map(x => x.name);
+    for (const [col, def] of [['pay_source', "TEXT NOT NULL DEFAULT 'balance'"], ['pay_auth', "TEXT NOT NULL DEFAULT 'none'"], ['pin_hash', 'TEXT'], ['pin_fail', 'INTEGER NOT NULL DEFAULT 0'], ['pin_lock', 'INTEGER NOT NULL DEFAULT 0'], ['pk_id', 'TEXT'], ['pk_pub', 'TEXT'], ['pk_alg', 'INTEGER'], ['pk_count', 'INTEGER NOT NULL DEFAULT 0']])
+      if (!c.includes(col)) db.exec(`ALTER TABLE biz_members ADD COLUMN ${col} ${def}`); }
   const q = {
     get: db.prepare('SELECT * FROM biz_members WHERE roblox_id = ?'),
     add: db.prepare("INSERT INTO biz_members (roblox_id, status, form, applied_at) VALUES (?, 'pending', ?, ?) ON CONFLICT(roblox_id) DO UPDATE SET status = 'pending', form = excluded.form, applied_at = excluded.applied_at, note = NULL, decided_at = NULL"),
@@ -52,7 +59,21 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
     reqVotes: db.prepare('UPDATE biz_requests SET votes = ? WHERE id = ?'),
     codes: db.prepare('SELECT g.code, g.usd, g.status, g.redeemed_at, u.username AS redeemed_name, g.expires_at FROM gift_cards g LEFT JOIN users u ON u.roblox_id = g.redeemed_by WHERE g.assigned_to = ? ORDER BY g.created_at DESC LIMIT 200'),
     assign: db.prepare('UPDATE gift_cards SET assigned_to = ? WHERE code = ?'),
-    payouts: db.prepare("SELECT 'deposit' AS kind, rodux AS amount, 'ok' AS status, ref AS reference, 'Business card payout' AS reason, at AS created_at FROM biz_ledger WHERE roblox_id = ? AND kind = 'withdraw-rodux' ORDER BY at DESC LIMIT 25"),
+    // what the browser adds to (or takes from) the play balance, once each
+    payouts: db.prepare("SELECT CASE kind WHEN 'topup' THEN 'card-topup' ELSE 'deposit' END AS kind, rodux AS amount, 'ok' AS status, ref AS reference, CASE kind WHEN 'topup' THEN 'Moved to your Business Card' WHEN 'card-pay' THEN 'Paid with your Business Card' ELSE 'Business card payout' END AS reason, at AS created_at FROM biz_ledger WHERE roblox_id = ? AND kind IN ('withdraw-rodux','card-pay','topup') ORDER BY at DESC LIMIT 25"),
+    user: db.prepare('SELECT * FROM users WHERE roblox_id = ?'),
+    takeSite: db.prepare('UPDATE users SET balance = balance - ?, deposited = MAX(withdrawn, deposited - ?) WHERE roblox_id = ?'),
+    setPay: db.prepare('UPDATE biz_members SET pay_source = ? WHERE roblox_id = ?'),
+    setAuth: db.prepare('UPDATE biz_members SET pay_auth = ?, pin_hash = COALESCE(?, pin_hash) WHERE roblox_id = ?'),
+    pinFail: db.prepare('UPDATE biz_members SET pin_fail = ?, pin_lock = ? WHERE roblox_id = ?'),
+    setPk: db.prepare('UPDATE biz_members SET pk_id = ?, pk_pub = ?, pk_alg = ?, pk_count = 0 WHERE roblox_id = ?'),
+    pkCount: db.prepare('UPDATE biz_members SET pk_count = ? WHERE roblox_id = ?'),
+    waitMember: db.prepare("SELECT decided_at - applied_at AS d FROM biz_members WHERE decided_at IS NOT NULL AND status IN ('approved','rejected','suspended') ORDER BY decided_at DESC LIMIT 25"),
+    waitTepp: db.prepare("SELECT tepp_decided_at - tepp_at AS d FROM biz_members WHERE tepp_decided_at IS NOT NULL AND tepp_at IS NOT NULL ORDER BY tepp_decided_at DESC LIMIT 25"),
+    aheadMember: db.prepare("SELECT COUNT(*) AS n FROM biz_members WHERE status = 'pending' AND applied_at < ?"),
+    aheadTepp: db.prepare("SELECT COUNT(*) AS n FROM biz_members WHERE tepp = 'pending' AND tepp_at < ?"),
+    pendingMember: db.prepare("SELECT COUNT(*) AS n FROM biz_members WHERE status = 'pending'"),
+    pendingTepp: db.prepare("SELECT COUNT(*) AS n FROM biz_members WHERE tepp = 'pending'"),
   };
   const now = () => Date.now();
   const parse = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
@@ -69,7 +90,9 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
     const base = { cardNo: cardNo(id), roduxPerUsd: perUsd(), platforms: PLATFORMS, accents: ACCENTS };
     if (!m) return { ...base, status: 'none' };
     const card = parse(m.card, null);
+    const review = m.status === 'pending' ? queue('member', m.applied_at) : m.status === 'approved' && m.tepp === 'pending' ? queue('tepp', m.tepp_at) : null;
     return {
+      review, pay: { source: m.pay_source, method: m.pay_auth, hasPin: !!m.pin_hash, hasDevice: !!m.pk_id, locked: m.pin_lock > now() ? m.pin_lock : null },
       ...base, status: m.status, appliedAt: m.applied_at, decidedAt: m.decided_at, note: m.note, form: parse(m.form, {}),
       tepp: m.tepp, teppAt: m.tepp_at, teppNote: m.tepp_note, teppForm: parse(m.tepp_form, null),
       card, cardAt: m.card_at, balance: { usd: m.usd_cents / 100, rodux: m.rodux, roduxValue: m.rodux + Math.floor(m.usd_cents * perUsd() / 100) },
@@ -78,6 +101,18 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
       codes: m.status === 'approved' ? q.codes.all(id).map(c => ({ code: c.code, usd: c.usd, status: c.status === 'active' && c.expires_at && c.expires_at < now() ? 'expired' : c.status, redeemedBy: c.redeemed_name, redeemedAt: c.redeemed_at })) : [],
       requests: m.status === 'approved' ? requests(id) : [],
     };
+  }
+
+  /* ---------- where an application stands ---------- */
+  // Estimated wait: the median time moderators took on the last 25 decisions at this stage
+  // (2 days when there is no history yet), plus a little for each application ahead in the queue.
+  function queue(stage, since) {
+    const ds = (stage === 'tepp' ? q.waitTepp : q.waitMember).all().map(r => r.d).filter(d => d > 0).sort((a, b) => a - b);
+    const med = ds.length ? ds[Math.floor(ds.length / 2)] : 48 * 36e5;
+    const ahead = (stage === 'tepp' ? q.aheadTepp : q.aheadMember).get(since || now()).n;
+    const total = Math.max(med + ahead * 4 * 36e5, 36e5);
+    return { stage, since, ahead, position: ahead + 1, pending: (stage === 'tepp' ? q.pendingTepp : q.pendingMember).get().n,
+      estimateMs: total, expectedBy: (since || now()) + total, basedOn: ds.length };
   }
 
   /* ---------- applying ---------- */
@@ -213,6 +248,115 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
     q.reqVotes.run(JSON.stringify(v), r.id); return requests(id);
   }
 
+  /* ---------- paying with the card ---------- */
+  const b64u = b => Buffer.from(b).toString('base64url');
+  const unb64u = s => Buffer.from(String(s || ''), 'base64url');
+  const sha = b => crypto.createHash('sha256').update(b).digest();
+  const challenges = new Map();
+  function challenge(id, kind) { const c = b64u(crypto.randomBytes(32)); challenges.set(id + ':' + kind, { c, exp: now() + 5 * 60e3 }); return c; }
+  function takeChallenge(id, kind, c) { const k = id + ':' + kind, v = challenges.get(k); challenges.delete(k); return !!v && v.exp > now() && v.c === c; }
+  const ORIGINS = new Set(['https://tradeblacket.com', 'https://www.tradeblacket.com', 'https://tradeblacketv2-production.up.railway.app', ...origins]);
+  function clientData(raw, type, id, kind) {
+    let cd; try { cd = JSON.parse(unb64u(raw).toString('utf8')); } catch { throw new BizError('Your device sent something unexpected. Try again.'); }
+    if (cd.type !== type) throw new BizError('Your device sent something unexpected. Try again.');
+    if (!ORIGINS.has(cd.origin)) throw new BizError('Device confirmation only works on tradeblacket.com.');
+    if (!takeChallenge(id, kind, cd.challenge)) throw new BizError('That confirmation expired. Try again.');
+    return cd;
+  }
+  const pinHash = pin => { const salt = crypto.randomBytes(16); return salt.toString('hex') + ':' + crypto.scryptSync(String(pin), salt, 32).toString('hex'); };
+  const pinOk = (pin, h) => { if (!h) return false; const [s, v] = h.split(':'); const x = crypto.scryptSync(String(pin), Buffer.from(s, 'hex'), 32); return crypto.timingSafeEqual(x, Buffer.from(v, 'hex')); };
+  // Proves a passkey assertion came from the device registered to this card.
+  function deviceOk(m, a) {
+    if (!a || !m.pk_id || a.id !== m.pk_id) throw new BizError('Confirm with the device you set up for your card.');
+    const cd = clientData(a.clientDataJSON, 'webauthn.get', m.roblox_id, 'pay');
+    const auth = unb64u(a.authenticatorData);
+    if (auth.length < 37 || !auth.subarray(0, 32).equals(sha(new URL(cd.origin).hostname))) throw new BizError('Your device confirmed for a different site.');
+    if ((auth[32] & 0x05) !== 0x05) throw new BizError('Your device did not confirm it was you. Try again.');
+    const key = crypto.createPublicKey({ key: Buffer.from(m.pk_pub, 'base64'), format: 'der', type: 'spki' });
+    const data = Buffer.concat([auth, sha(unb64u(a.clientDataJSON))]);
+    const good = crypto.verify(m.pk_alg === -257 ? 'sha256' : 'sha256', data, m.pk_alg === -257 ? key : { key, dsaEncoding: 'der' }, unb64u(a.signature));
+    if (!good) throw new BizError('Your device confirmation did not match. Try again.');
+    const count = auth.readUInt32BE(33);
+    if (count && m.pk_count && count <= m.pk_count) throw new BizError('That confirmation was already used.');
+    q.pkCount.run(count, m.roblox_id);
+    return true;
+  }
+  // Checks the confirmation the partner chose. auth: { pin } or { assertion }.
+  function authorize(m, auth = {}) {
+    if (m.pay_auth === 'none') return true;
+    if (m.pay_auth === 'pin') {
+      if (m.pin_lock > now()) throw new BizError(`Too many wrong codes. Try again in ${Math.ceil((m.pin_lock - now()) / 60e3)} minutes.`, 429);
+      if (!/^\d{4,6}$/.test(String(auth.pin || ''))) throw new BizError('Enter your card code.');
+      if (!pinOk(auth.pin, m.pin_hash)) { const f = m.pin_fail + 1; q.pinFail.run(f >= 5 ? 0 : f, f >= 5 ? now() + 15 * 60e3 : 0, m.roblox_id); throw new BizError(f >= 5 ? 'Too many wrong codes. Card payments are paused for 15 minutes.' : 'That code is not right.', f >= 5 ? 429 : 403); }
+      if (m.pin_fail) q.pinFail.run(0, 0, m.roblox_id);
+      return true;
+    }
+    if (m.pay_auth === 'device') return deviceOk(m, auth.assertion);
+    throw new BizError('Set up how you confirm card payments first.');
+  }
+  const withCard = id => { const m = partner(id); if (!m) throw new BizError('Card payments are for Trade Empire Partners.', 403); if (!m.card) throw new BizError('Create your Business Card first.'); if (isBanned(id)) throw new BizError('This account is banned.', 403); return m; };
+
+  function setSource(id, source) { withCard(id); q.setPay.run(source === 'card' ? 'card' : 'balance', id); return view(id); }
+  // Change how payments are confirmed. Changing away from a code or device needs that code or device.
+  function setSecurity(id, b) {
+    const m = withCard(id), method = ['none', 'pin', 'device'].includes(b.method) ? b.method : null;
+    if (!method) throw new BizError('Pick how you want to confirm payments.');
+    if (m.pay_auth !== 'none') authorize(m, b.current || {});
+    let hash = null;
+    if (method === 'pin') { if (!/^\d{4,6}$/.test(String(b.pin || ''))) throw new BizError('Choose a code of 4 to 6 digits.'); hash = pinHash(b.pin); }
+    if (method === 'device' && !m.pk_id) throw new BizError('Set up your device first.');
+    q.setAuth.run(method, hash, id); note(id, 'biz', { step: `Card payments now confirmed with ${method === 'pin' ? 'a code' : method === 'device' ? 'their device' : 'nothing'}` });
+    return view(id);
+  }
+  function passkeyOptions(id, kind) {
+    const m = withCard(id);
+    if (kind === 'pay') return { challenge: challenge(id, 'pay'), credentialId: m.pk_id };
+    return { challenge: challenge(id, 'register'), userId: b64u(crypto.createHmac('sha256', String(secret)).update('pk:' + id).digest().subarray(0, 16)), name: (q.user.get(id) || {}).username || String(id) };
+  }
+  // Save the device's passkey. The browser hands over the public key (SPKI); the server keeps it and
+  // checks every later confirmation against it.
+  function passkeyRegister(id, b) {
+    const m = withCard(id);
+    if (m.pay_auth !== 'none' && m.pk_id) authorize(m, b.current || {});
+    clientData(b.clientDataJSON, 'webauthn.create', id, 'register');
+    const alg = Number(b.alg); if (alg !== -7 && alg !== -257) throw new BizError('This device uses a kind of key TradeBlacket does not support.');
+    let pub; try { pub = crypto.createPublicKey({ key: unb64u(b.publicKey), format: 'der', type: 'spki' }).export({ format: 'der', type: 'spki' }); } catch { throw new BizError('Your device sent a key we could not read.'); }
+    if (!/^[A-Za-z0-9_-]{16,512}$/.test(String(b.id || ''))) throw new BizError('Your device sent a key we could not read.');
+    q.setPk.run(String(b.id), pub.toString('base64'), alg, id);
+    note(id, 'biz', { step: 'Set up their device for card payments' });
+    return view(id);
+  }
+  // Top up: withdrawable Rodux from the TradeBlacket balance onto the card.
+  function topUp(id, amount) {
+    withCard(id);
+    const rx = Math.floor(Number(amount)); if (!(rx >= 1)) throw new BizError('Enter a whole amount of Rodux.');
+    const ref = 'TBBT-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+    tx(() => {
+      const u = q.user.get(id), can = withdrawable(u);
+      if (rx > can) throw new BizError(can > 0 ? `You can move up to ${can.toLocaleString('en-US')} Rodux. Bonus Rodux stays on your balance.` : 'You have no Rodux that can go on the card. Bonus Rodux stays on your balance.');
+      q.takeSite.run(rx, rx, id); q.money.run(0, rx, id);
+      q.led.run(id, 'topup', 'RODUX', rx, rx, 'From TradeBlacket balance', null, ref, null, now());
+    });
+    note(id, 'biz', { step: `Topped up their card with ${rx} Rodux`, rodux: rx, ref });
+    return { ...view(id), toppedUp: rx, ref };
+  }
+  // Pay with the card: the exact amount moves from the card to the balance, confirmed, so the
+  // withdrawal or purchase that follows uses it. Rodux on the card first, then dollars.
+  function pay(id, amount, auth, purpose) {
+    const m = withCard(id), rx = Math.floor(Number(amount));
+    if (!(rx >= 1)) throw new BizError('Nothing to pay.');
+    authorize(m, auth);
+    const pu = perUsd(), ref = 'TBBP-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+    tx(() => {
+      const c = q.get.get(id), fromRodux = Math.min(c.rodux, rx), cents = Math.ceil((rx - fromRodux) * 100 / pu);
+      if (cents > c.usd_cents) throw new BizError('Your card does not hold enough for this.');
+      q.money.run(-cents, -fromRodux, id); q.credit.run(rx, rx, id);
+      q.led.run(id, 'card-pay', cents ? 'USD' : 'RODUX', cents ? -cents : -fromRodux, rx, clean(purpose, 60) || 'Card payment', null, ref, null, now());
+    });
+    note(id, 'biz', { step: `Paid ${rx} Rodux with their Business Card`, rodux: rx, ref, note: clean(purpose, 60) });
+    return { ...view(id), paid: rx, ref };
+  }
+
   /* ---------- moderators ---------- */
   const must = a => { if (!isAdmin(a)) throw new BizError('Only moderators can do that.', 403); };
   function adminView(admin) {
@@ -268,7 +412,7 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
   }
   function setYoutube(admin, b) { must(admin); q.ytOk.run(b.verified ? 1 : 0, Number(b.robloxId)); return adminView(admin); }
 
-  return { badge, view, apply, applyTepp, saveCard, ytStart, ytVerify, withdrawRodux, withdrawItems, shop, requests, addRequest, vote,
+  return { setSource, setSecurity, passkeyOptions, passkeyRegister, topUp, pay, badge, view, apply, applyTepp, saveCard, ytStart, ytVerify, withdrawRodux, withdrawItems, shop, requests, addRequest, vote,
     adminView, decide, payout, giveCodes, setRequest, setYoutube, payouts: id => q.payouts.all(id), cardNo, BizError };
 }
 

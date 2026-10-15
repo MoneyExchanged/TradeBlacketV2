@@ -28,6 +28,8 @@ async function syncMe(){
     const r=await fetch('/api/me',{credentials:'same-origin',cache:'no-store'});
     if(!r.ok){WAPI.me=null;if(r.status===401&&S.user&&WAPI.live){S.user=null;save();drawWho();toast('You were signed out. Sign in again to continue.')}return null}
     const me=await r.json();WAPI.me=me;
+    // A valid session on this browser but no local profile (new tab, cleared storage): restore it.
+    if(!S.user&&me.username){S.user={name:me.username};S.guest=false;save();drawWho()}
     // Credit or debit the play balance once per confirmed transfer, keyed by its reference.
     S.seenRefs=S.seenRefs||[];const seen=new Set(S.seenRefs);
     // First time this browser sees this account: take the server's balance once, and mark the
@@ -39,6 +41,8 @@ async function syncMe(){
       seen.add(t.reference);S.seenRefs.push(t.reference);
       if(fresh)continue;
       if(t.kind==='bonus'){bonus(t.amount);toast(`Referral reward: ${fmt(t.amount)} bonus Rodux`,'win')}
+      else if(t.kind==='card-topup'){setBal(S.bal-t.amount);toast(`${fmt0(t.amount)} Rodux moved to your Business Card`,'gold')}
+      else if(t.kind==='deposit'&&/^TBB/.test(t.reference)){pay(t.amount);toast(`${fmt0(t.amount)} Rodux from your Business Card`,'win')}
       else if(t.kind==='deposit'){pay(t.amount);toast(`${fmt(t.amount)} Rodux arrived from Trade Empire`,'win')}
       else{setBal(S.bal-t.amount);toast(`${fmt(t.amount)} Rodux went back to Trade Empire`,'gold')}
     }
@@ -55,7 +59,7 @@ function teState(){
 function addTx(t){S.tx=S.tx||[];t.id=uid();t.t=Date.now();S.tx.unshift(t);S.tx.length=Math.min(S.tx.length,60);save();return t}
 const txRef=k=>(k==='in'?'TBD-':'TBW-')+uid().slice(0,5).toUpperCase()+uid().slice(0,5).toUpperCase();
 function wState(){
-  if(WAPI.live&&WAPI.me){const m=WAPI.me;return{deposited:m.deposited,withdrawn:m.withdrawn,canBack:Math.max(0,Math.min(S.bal-(S.lock||0),m.withdrawable)),tx:m.transfers.map(t=>({dir:t.kind==='withdraw'?'out':'in',amt:t.amount,status:t.status==='ok'?'Completed':'Refused',ref:t.reference||'',reason:t.reason,t:t.created_at}))}}
+  if(WAPI.live&&WAPI.me){const m=WAPI.me;return{deposited:m.deposited,withdrawn:m.withdrawn,canBack:Math.max(0,Math.min(S.bal-(S.lock||0),m.withdrawable)),tx:m.transfers.map(t=>({dir:t.kind==='withdraw'||t.kind==='card-topup'?'out':'in',amt:t.amount,status:t.status==='ok'?'Completed':'Refused',ref:t.reference||'',reason:t.reason,t:t.created_at}))}}
   const te=teState();
   return{deposited:te.dep,withdrawn:te.wd,canBack:Math.max(0,Math.floor(Math.min(S.bal-(S.lock||0),te.dep-te.wd))),
     tx:(S.tx||[]).filter(t=>t.kind==='rodux').map(t=>({dir:t.dir,amt:t.amt,status:t.status,ref:t.code,t:t.t}))};
@@ -129,13 +133,17 @@ function openWallet(tab='deposit',pre=null){
   async function loadGE(force){
     if(!WAPI.live)return null;
     if(GE&&!force&&Date.now()-geAt<8000)return GE;
-    const r=await api('/api/game/wallet');GE=r.ok?r.j:{available:false,error:r.j.error};
+    const [r]=await Promise.all([api('/api/game/wallet'),typeof cardLoad==='function'?cardLoad(force):null]);GE=r.ok?r.j:{available:false,error:r.j.error};
     geAt=Date.now();return GE;
   }
+  // Partners who pay with their Business Card withdraw what the card holds (the game still caps it).
+  const cardSource=()=>typeof CARD!=='undefined'&&CARD.me&&CARD.me.card&&CARD.me.pay.source==='card';
+  const wdCap=g=>Math.max(0,cardSource()?Math.min(CARD.me.balance.roduxValue,g.gameWithdrawable):Math.min(Math.floor(S.bal-(S.lock||0)),WAPI.me?WAPI.me.withdrawable:0,g.gameWithdrawable));
   async function direct(kind){
     const a=Math.floor(+$('#wa',R).value||0),e=$('#we',R),btn=$('#wgo',R);e.textContent='';
     if(a<1){e.textContent='Enter a whole amount of Rodux.';return}
     if(kind==='deposit'&&!accepted('cds')){if(await needCds())openWallet('deposit','te');return}
+    if(kind==='withdraw'&&!(await cardMaybe(a,`Withdraw to ${TE.name}`)))return;
     btn.disabled=true;const label=btn.innerHTML;btn.innerHTML=`<div class="spin sm"></div>${kind==='deposit'?'Moving Rodux from':'Sending Rodux to'} ${TE.name}`;
     const r=await api('/api/game/'+kind,{amount:a}),j=r.j;
     if(!B())return;
@@ -155,13 +163,13 @@ function openWallet(tab='deposit',pre=null){
     if(!g.available)return`<div class="wwarn">${esc(g.error||`Moving Rodux to and from ${TE.name} is not switched on yet. Please try again later.`)}</div>`;
     if(!g.hasSave)return`<div class="wwarn">We couldn't find a ${TE.name} save for this account. Play ${TE.name} once so your save exists.</div>`;
     if(g.inGame)return outOfGame(dep);
-    const cap=dep?g.balance:Math.max(0,Math.min(Math.floor(S.bal-(S.lock||0)),WAPI.me?WAPI.me.withdrawable:0,g.gameWithdrawable));
+    const cap=dep?g.balance:wdCap(g),byCard=!dep&&cardSource();
     return`<div class="wstat"><div><span>In ${TE.name}</span><b>${chip(14)}${fmt0(g.balance)}</b></div><div><span>${dep?'On TradeBlacket':'Can withdraw'}</span><b>${chip(14)}${dep?fmt(S.bal):fmt0(cap)}</b></div></div>
       <div class="wsim live"><span class="wlbl">${dep?`Deposit from your ${TE.name} save`:`Withdraw to your ${TE.name} save`}</span><div class="amt" data-cap="${cap}">${chip(20)}<input id="wa" type="number" min="1" step="1" value="${Math.min(dep?500:cap,cap)}" aria-label="Amount"><button type="button" id="wmax">Max</button></div><div class="lx-quick"><button type="button" data-q=".1">10%</button><button type="button" data-q=".25">25%</button><button type="button" data-q=".5">50%</button><button type="button" data-q="1">Max</button></div><div class="err" id="we"></div><button class="cta" id="wgo"${cap<1?' disabled':''}>${dep?'Deposit':'Withdraw'}</button></div>
-      <p class="wnote">Stay out of ${TE.name} while a transfer runs. It takes a few seconds.</p>`;
+      ${byCard?`<p class="wnote">Paid with your Business Card. You can switch to your balance in Settings.</p>`:''}<p class="wnote">Stay out of ${TE.name} while a transfer runs. It takes a few seconds.</p>`;
   }
   function wireLive(dep){
-    const cap=()=>dep?GE.balance:Math.max(0,Math.min(Math.floor(S.bal-(S.lock||0)),WAPI.me?WAPI.me.withdrawable:0,GE.gameWithdrawable));
+    const cap=()=>dep?GE.balance:wdCap(GE);
     // Max reads the save again first, so it is always everything there is right now.
     if($('#wmax',R))$('#wmax',R).onclick=async()=>{const b=$('#wmax',R);b.disabled=true;b.textContent='…';await loadGE(true);if(!B())return;draw();const w=$('#wa',R);if(w)w.value=cap()};
     // Coming back from the game: read the save again.

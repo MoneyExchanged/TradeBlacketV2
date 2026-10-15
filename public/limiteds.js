@@ -250,6 +250,7 @@ function ltdMarketView(el){
   el.onclick=async e=>{
     const b=e.target.closest('[data-lmb]'),u=e.target.closest('[data-lmu]');
     if(b){if(!S.user)return openLogin();const x=L.find(i=>i.id===b.dataset.lmb);b.disabled=true;
+      if(WAPI.live&&!(await cardMaybe(x.price,`Buy ${x.name}`))){b.disabled=false;return}
       if(WAPI.live){const r=await api('/api/items/buy',{id:x.id});if(!r.ok){b.disabled=false;return toast(r.j.error,'loss')}await syncMe()}
       else{if(!take(x.price)){b.disabled=false;return}S.ltdMarket=S.ltdMarket.filter(i=>i.id!==x.id);ltdDemo().site.unshift({uid:x.uid,itemId:x.itemId,art:x.art,serial:x.serial,name:x.name,value:x.value,status:'held'});save()}
       toast(`${x.name} is in your Limiteds. Withdraw it to Trade Empire whenever you like.`,'win');L=await ltdMarketLoad();draw()}

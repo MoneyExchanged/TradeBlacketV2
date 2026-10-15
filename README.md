@@ -85,6 +85,10 @@ The whole site is invite-only while `SITE_WAITLIST` is on (the default). Players
 
 Staff pay a card in US dollars or Rodux and hand partners giveaway gift cards. A partner withdraws card money as Rodux on TradeBlacket (withdrawable to Trade Empire like deposited Rodux; dollars convert at the gift card rate) or as limiteds TradeBlacket owns (house listings move to the partner's Limiteds, nothing is created). Every step, payout and withdrawal is in the player log.
 
+While an application waits, the portal shows its **status**: place in the queue, an estimated wait (the median time moderators took on the last 25 decisions at that stage, 2 days with no history, plus 4 hours per application ahead) and the date a decision is expected. It refreshes by itself.
+
+**Paying with the card.** Partners can **top up** the card from their TradeBlacket balance (withdrawable Rodux only; bonus Rodux stays). In Payment settings (in the portal, and on the main Settings page) they pick what pays withdrawals to Trade Empire and marketplace purchases: their **TradeBlacket balance** or their **Business Card**. Card payments are confirmed with **nothing**, a **4 to 6 digit code** (scrypt hashed; 5 wrong codes pause card payments for 15 minutes) or **this device** (a WebAuthn passkey: Windows Hello, Touch ID, Face ID or the phone's screen lock; the server checks the signature against the stored public key, no extra packages). Changing the method needs the current one. A card payment moves the exact amount from the card to the balance (`card-pay` in the ledger, card Rodux first, then dollars) and the withdrawal or purchase follows. Rodux that leaves the site for Trade Empire is still capped by the game's own rule: no more than the player's net site deposits.
+
 ## Gift cards and money display
 
 `giftcards.js`. Admins (Admin, then Gift cards) make $5, $10, $100 or $500 cards (`TBG-XXXX-XXXX-XXXX`, single use, optional expiry and a note for the creator or giveaway) and hand them to content creators. Players cannot buy them; they redeem a code on the Gift card page.
