@@ -29,7 +29,7 @@ async function syncMe(){
     if(!r.ok){WAPI.me=null;if(r.status===401&&S.user&&WAPI.live){S.user=null;save();drawWho();toast('You were signed out. Sign in again to continue.')}return null}
     const me=await r.json();WAPI.me=me;
     // A valid session on this browser but no local profile (new tab, cleared storage): restore it.
-    if(!S.user&&me.username){S.user={name:me.username};S.guest=false;save();drawWho()}
+    if(!S.user&&me.username){S.user={name:me.username};S.guest=false;save();drawWho();const g=$('#gate');if(g&&g.innerHTML.trim()){g.innerHTML='';document.body.classList.remove('gate-on')}setTimeout(()=>{if(typeof siteGate==='function')siteGate()},0)}
     // Credit or debit the play balance once per confirmed transfer, keyed by its reference.
     S.seenRefs=S.seenRefs||[];const seen=new Set(S.seenRefs);
     // First time this browser sees this account: take the server's balance once, and mark the

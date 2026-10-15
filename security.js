@@ -21,7 +21,7 @@ const crypto = require('node:crypto');
 const DAY = 864e5, WINDOW = 30 * DAY;
 class SecError extends Error { constructor(msg, code = 400) { super(msg); this.code = code; } }
 
-function create({ db, tx, secret, isAdmin, log = () => {} }) {
+function create({ db, tx, secret, isAdmin, isStaff = isAdmin, log = () => {} }) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS sightings (kind TEXT NOT NULL, hash TEXT NOT NULL, roblox_id INTEGER NOT NULL, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, PRIMARY KEY (kind, hash, roblox_id));
     CREATE INDEX IF NOT EXISTS sightings_user ON sightings (roblox_id);
@@ -137,20 +137,20 @@ function create({ db, tx, secret, isAdmin, log = () => {} }) {
 
   /* ---------- admin ---------- */
   function adminBan(admin, who, reason) {
-    if (!isAdmin(admin)) throw new SecError('Only admins can do that.', 403);
+    if (!isStaff(admin)) throw new SecError('Only staff can do that.', 403);
     const id = /^\d+$/.test(String(who)) ? Number(who) : (q.byName.get(String(who || '').trim()) || {}).roblox_id;
     if (!id) throw new SecError('No TradeBlacket account with that name or id.', 404);
-    if (isAdmin(id)) throw new SecError('Admins cannot be banned.');
+    if (isAdmin(id)) throw new SecError('Owners cannot be banned.');
     ban(id, String(reason || 'Banned by an admin').slice(0, 120), null, admin);
     return { ok: true };
   }
   function adminUnban(admin, id) {
-    if (!isAdmin(admin)) throw new SecError('Only admins can do that.', 403);
+    if (!isStaff(admin)) throw new SecError('Only staff can do that.', 403);
     q.unban.run(Number(id)); log('unban', id, 'by', admin);
     return { ok: true };
   }
   function adminList(admin) {
-    if (!isAdmin(admin)) throw new SecError('Only admins can do that.', 403);
+    if (!isStaff(admin)) throw new SecError('Only staff can do that.', 403);
     return { bans: q.list.all() };
   }
 

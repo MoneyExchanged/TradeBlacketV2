@@ -49,7 +49,7 @@ function standing(v, now = Date.now()) {
   };
 }
 
-function create({ db, tx, log = () => {}, isAdmin, security, siteList, items, GB, social, referrals, withdrawable }) {
+function create({ db, tx, log = () => {}, isAdmin, outranks = (a, b) => !isAdmin(b), security, siteList, items, GB, social, referrals, withdrawable }) {
   db.exec(`CREATE TABLE IF NOT EXISTS mod_actions (id INTEGER PRIMARY KEY AUTOINCREMENT, roblox_id INTEGER NOT NULL, action TEXT NOT NULL, reason TEXT, note TEXT, by_id INTEGER, at INTEGER NOT NULL, expires_at INTEGER, ticket_id TEXT);
     CREATE INDEX IF NOT EXISTS mod_actions_user ON mod_actions (roblox_id, at DESC);`);
   const q = {
@@ -158,7 +158,7 @@ function create({ db, tx, log = () => {}, isAdmin, security, siteList, items, GB
     if (!isAdmin(admin)) throw new AccountError('Only admins can do that.', 403);
     const action = String(b.action || ''); if (!ACTIONS.includes(action)) throw new AccountError('Pick an action.');
     const id = find(b.robloxId != null ? b.robloxId : b.who);
-    if (isAdmin(id) && action !== 'note') throw new AccountError('Admins cannot be moderated.');
+    if (action !== 'note' && !outranks(admin, id)) throw new AccountError(Number(admin) === id ? 'You cannot moderate your own account.' : 'You can only act on accounts below your own staff rank.', 403);
     const reason = String(b.reason || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 160);
     const note = String(b.note || '').trim().slice(0, 1000) || null;
     const ticket = b.ticketId ? String(b.ticketId).slice(0, 20) : null;

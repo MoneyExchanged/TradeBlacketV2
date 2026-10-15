@@ -19,7 +19,7 @@ const NAMESTYLES = ['plain', 'gold', 'gradient', 'glow'];
 const hex = v => /^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : null;
 class SocialError extends Error { constructor(msg, code = 400) { super(msg); this.code = code; } }
 
-function create({ db, tx, log, isAdmin, readSave, secret, uploadDir, forPlayer = s => s, badge = () => null }) {
+function create({ db, tx, log, isAdmin, readSave, secret, uploadDir, forPlayer = s => s, badge = () => null, staffBadge = () => null }) {
   const cols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
   if (!cols.includes('profile')) db.exec("ALTER TABLE users ADD COLUMN profile TEXT NOT NULL DEFAULT '{}'");
   if (!cols.includes('tier')) db.exec('ALTER TABLE users ADD COLUMN tier TEXT');
@@ -89,7 +89,7 @@ function create({ db, tx, log, isAdmin, readSave, secret, uploadDir, forPlayer =
       banner: plus ? p.banner || 'gold' : 'default', accent: plus ? p.accent || null : null, accent2: plus ? p.accent2 || null : null,
       effect: plus ? p.effect || 'none' : 'none', nameStyle: plus ? p.nameStyle || 'plain' : 'plain',
       showcase: Array.isArray(p.showcase) ? p.showcase.slice(0, 6) : [], me: viewer === u.roblox_id,
-      admin: isAdmin(u.roblox_id), business: badge(u.roblox_id),
+      admin: isAdmin(u.roblox_id), business: badge(u.roblox_id), staff: staffBadge(u.roblox_id),
     };
   }
   async function getProfile(name, viewer) {

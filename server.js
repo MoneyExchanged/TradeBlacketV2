@@ -77,7 +77,10 @@ db.exec(`
   if (!cols.includes('tos_version')) db.exec('ALTER TABLE users ADD COLUMN tos_version TEXT');
   if (!cols.includes('cds_version')) db.exec('ALTER TABLE users ADD COLUMN cds_version TEXT'); }
 // Bump these when a document changes in a way players must agree to again.
-const LEGAL = { tos: '2026-10-15', cds: '2026-10-14' }; // tos 2026-10-15: one account per player, referrals
+// Legal documents: one source for the site and the server (public/legaldocs.js). Signing the "site" pack
+// sets tos_version; signing the Currency Deduction Service sets cds_version.
+const LEGAL_DOCS = require(path.join(__dirname, 'public', 'legaldocs.js'));
+const LEGAL = { tos: LEGAL_DOCS.tos.v, cds: LEGAL_DOCS.cds.v };
 const now = () => Date.now();
 const tx = fn => { db.exec('BEGIN IMMEDIATE'); try { const r = fn(); db.exec('COMMIT'); return r; } catch (e) { db.exec('ROLLBACK'); throw e; } };
 const q = {
@@ -208,7 +211,7 @@ async function authVerify(req, res) {
   if (!desc.includes(c.phrase)) return send(res, 409, { error: 'The phrase is not in your About section yet. Save it on Roblox, then verify again.' });
   q.dropChallenge.run(c.token);
   const before = q.user.get(c.roblox_id), isNew = !before || !before.username;
-  tx(() => { q.addUser.run(c.roblox_id, c.username, now()); q.setName.run(c.username, c.roblox_id); if (b.acceptTos === LEGAL.tos) db.prepare('UPDATE users SET tos_version = ? WHERE roblox_id = ?').run(LEGAL.tos, c.roblox_id); });
+  tx(() => { q.addUser.run(c.roblox_id, c.username, now()); q.setName.run(c.username, c.roblox_id);  });
   // A new account from a network, device or hardware another account already uses is banned here.
   const hit = security.onSignIn(c.roblox_id, req, isNew);
   plog.add(c.roblox_id, 'signin', { isNew, ...security.labels(req), banned: hit ? hit.kind && `same ${({ ip: 'network', dev: 'device', hw: 'hardware' })[hit.kind]} as another account` : undefined });
@@ -234,12 +237,12 @@ function me(req, res) {
   return send(res, 200, {
     robloxId: u.roblox_id, username: u.username, balance: u.balance, bonusLock: u.bonus_lock,
     deposited: u.deposited, withdrawn: u.withdrawn, withdrawable: withdrawable(u),
-    legal: { tos: u.tos_version === LEGAL.tos, cds: u.cds_version === LEGAL.cds, versions: LEGAL },
+    legal: { tos: u.tos_version === LEGAL.tos, cds: u.cds_version === LEGAL.cds, business: legal.signed(u.roblox_id, 'business'), versions: LEGAL, docs: legal.versions },
     limits: limits.status(u.roblox_id), itemValue: items.siteItemValue(u.roblox_id),
     studio: provider.recent(u.roblox_id), slots: waitlist.status(u.roblox_id), site: { gate: SITE_GATE, access: siteOk(u.roblox_id) },
     business: business.badge(u.roblox_id),
     banned: ban ? { reason: ban.reason, at: ban.created_at, kind: ban.kind || 'ban', until: ban.expires_at || null } : null, referral: { code: referrals.codeFor(u.roblox_id), reward: referrals.REWARD },
-    walletId: social.walletId(u.roblox_id), tier: (social.tier(u.roblox_id).catch(() => {}), u.tier || null), admin: waitlist.isAdmin(u.roblox_id),
+    walletId: social.walletId(u.roblox_id), tier: (social.tier(u.roblox_id).catch(() => {}), u.tier || null), admin: staff.isStaff(u.roblox_id), staff: staff.view(u.roblox_id),
     // in-game transfers and website (offline) transfers together, newest first
     transfers: q.recent.all(u.roblox_id).concat(db.prepare("SELECT kind, amount, CASE status WHEN 'ok' THEN 'ok' ELSE 'refused' END AS status, id AS reference, note AS reason, created_at FROM offline_transfers WHERE roblox_id = ? AND status != 'staged' ORDER BY created_at DESC LIMIT 25").all(u.roblox_id)).concat(referrals.payouts(u.roblox_id)).concat(gifts.payouts(u.roblox_id)).concat(business.payouts(u.roblox_id))
       .sort((a, b) => b.created_at - a.created_at).slice(0, 25),
@@ -269,13 +272,16 @@ const bridge = require('./gamebridge.js').create({
 const items = require('./items.js').create({ db, tx, log: (...a) => log(...a), guard: (...a) => guard(...a), note: (...a) => plog.add(...a) });
 const limits = require('./limits.js').create({ db, tx });
 // Studio games (LuckyStreak) on the Rodux balance, through a signed seamless wallet. Off until configured.
-const waitlist = require('./waitlist.js').create({ db, tx, blocked: id => security.isBanned(id) });
+// Staff ranks (Trial Moderator to Owner), side roles and what each may do.
+const staff = require('./staff.js').create({ db, log: (...a) => log(...a) });
+const waitlist = require('./waitlist.js').create({ db, tx, blocked: id => security.isBanned(id), isAdmin: id => staff.isStaff(id) });
 // The whole site is invite-only while SITE_WAITLIST is on (the default): signed-in players join the
 // site waitlist and get in when an admin lets them in or with a site access code.
-const siteList = require('./waitlist.js').create({ db, tx, scope: 'site', blocked: id => security.isBanned(id) });
+const siteList = require('./waitlist.js').create({ db, tx, scope: 'site', blocked: id => security.isBanned(id), isAdmin: id => staff.isStaff(id) });
 const SITE_GATE = String(process.env.SITE_WAITLIST || 'on').toLowerCase() !== 'off';
 // One player, one account: rate limits, and bans for accounts sharing a network, device or hardware.
-const security = require('./security.js').create({ db, tx, secret: CFG.secret, isAdmin: id => waitlist.isAdmin(id), log: (...a) => log(...a) });
+// Only Owners are out of reach of bans; other staff can be banned by someone who outranks them.
+const security = require('./security.js').create({ db, tx, secret: CFG.secret, isAdmin: id => staff.isOwner(id), isStaff: id => staff.isStaff(id), log: (...a) => log(...a) });
 const siteOk = id => !security.isBanned(id) && (!SITE_GATE || siteList.hasAccess(id));
 const BANNED = 'This account is banned. You can still bring your Rodux and items back to Trade Empire.';
 const bannedMsg = id => { const b = security.banInfo(id); if (!b) return BANNED; if (b.kind === 'suspend') return `This account is suspended until ${new Date(b.expires_at).toUTCString().slice(5, 22)} UTC. You can still bring your Rodux and items back to Trade Empire.`; if (b.kind === 'terminate') return 'This account has been terminated. You can still bring your Rodux and items back to Trade Empire.'; return BANNED; };
@@ -284,6 +290,88 @@ const referrals = require('./referrals.js').create({
   db, tx, secret: CFG.secret, siteOk: id => siteOk(id), isBanned: id => security.isBanned(id), shared: (a, b) => security.shared(a, b),
   tosOk: id => { const u = q.user.get(id); return !!u && u.tos_version === LEGAL.tos; }, log: (...a) => log(...a),
 });
+// Electronic signatures on the legal documents.
+const legal = require('./legal.js').create({ db, docs: LEGAL_DOCS, can: (id, perm) => staff.can(id, perm), log: (...a) => log(...a),
+  onSigned: (id, pack) => { if (pack === 'site') db.prepare('UPDATE users SET tos_version = ? WHERE roblox_id = ?').run(LEGAL.tos, id); if (pack === 'cds') db.prepare('UPDATE users SET cds_version = ? WHERE roblox_id = ?').run(LEGAL.cds, id); } });
+// Monthly wages for partners: checked every hour.
+setInterval(() => { try { business.payWages(); } catch (e) { log('wages', e.message); } }, 36e5).unref();
+setTimeout(() => { try { business.payWages(); } catch (e) { log('wages', e.message); } }, 15e3).unref();
+// Security hashes are kept for 12 months after they were last seen (Privacy Policy).
+setInterval(() => { try { db.prepare('DELETE FROM sightings WHERE last_at < ?').run(Date.now() - 365 * 864e5); } catch (e) { log('prune', e.message); } }, 6 * 36e5).unref();
+// Provably fair numbers for the games, with automatic seed rotation.
+const fair = require('./fair.js').create({ db, tx });
+async function fairRoute(req, res, p) {
+  if (req.method === 'GET' && p === '/api/fair/verify') { const sp = new URL(req.url, 'http://x').searchParams; try { return send(res, 200, fair.verify(sp.get('server'), sp.get('client'), sp.get('nonce'))); } catch (e) { if (e instanceof fair.FairError) return send(res, e.code, { error: e.message }); throw e; } }
+  const u = authed(req, res); if (!u) return;
+  const id = u.roblox_id, b = req.method === 'POST' ? (await readJson(req)) || {} : {};
+  try {
+    if (req.method === 'GET' && p === '/api/fair') return send(res, 200, fair.state(id));
+    if (req.method === 'POST' && p === '/api/fair/batch') { security.limit(req, 'fair', 600, 10 * 60e3); return send(res, 200, fair.batch(id, b.rounds)); }
+    if (req.method === 'POST' && p === '/api/fair/client-seed') { security.limit(req, 'fairseed', 60, 10 * 60e3); return send(res, 200, fair.setClient(id, b.clientSeed)); }
+    if (req.method === 'POST' && p === '/api/fair/rotate') { security.limit(req, 'fairseed', 60, 10 * 60e3); return send(res, 200, fair.rotate(id, b.clientSeed)); }
+    if (req.method === 'POST' && p === '/api/fair/settings') return send(res, 200, fair.setAuto(id, b));
+  } catch (e) { if (e instanceof fair.FairError || e instanceof security.SecError) return send(res, e.code, { error: e.message }); throw e; }
+  return send(res, 404, { error: 'Not found' });
+}
+/* ---------- staff permission gate: every /api/admin/* call ---------- */
+const MOD_PERM = { warn: 'mod.warn', suspend: 'mod.suspend', kick: 'mod.kick', ban: 'mod.ban', terminate: 'mod.terminate', unban: 'mod.unban', grant: 'mod.grant', revoke: 'mod.grant', note: 'mod.note' };
+const BIZ_ANY = ['biz.review', 'biz.tepp', 'biz.pay', 'biz.wage', 'biz.requests', 'biz.youtube'];
+function staffPerm(p, b) {
+  if (p === '/api/admin/bans') return 'bans.view';
+  if (p.startsWith('/api/admin/giftcards')) return 'gifts.manage';
+  if (p === '/api/admin/search' || p === '/api/admin/player' || p === '/api/admin/account') return 'players.view';
+  if (p === '/api/admin/mod') return MOD_PERM[b.action] || 'mod.note';
+  if (p === '/api/admin/ban') return 'mod.ban';
+  if (p === '/api/admin/unban') return 'mod.unban';
+  if (p === '/api/admin/netcheck') return 'site.settings';
+  if (/^\/api\/admin\/(site\/)?(waitlist|codes|grant|revoke)$/.test(p)) return 'site.waitlist';
+  if (p === '/api/admin/business') return BIZ_ANY;
+  if (p === '/api/admin/business/decide') return b.stage === 'tepp' ? 'biz.tepp' : 'biz.review';
+  if (p === '/api/admin/business/payout' || p === '/api/admin/business/codes') return 'biz.pay';
+  if (p === '/api/admin/business/wage') return 'biz.wage';
+  if (p === '/api/admin/business/request') return 'biz.requests';
+  if (p === '/api/admin/business/youtube') return 'biz.youtube';
+  if (p === '/api/admin/signatures') return 'legal.view';
+  return 'dash.view';
+}
+// Checks the rank, and that an account action is aimed below the actor's own rank. Sets up the audit entry.
+function staffGate(req, res, id, p, b = {}) {
+  if (!staff.isStaff(id)) { send(res, 403, { error: 'Only staff can do that.' }); return false; }
+  const need = staffPerm(p, b);
+  if (!(Array.isArray(need) ? need.some(x => staff.can(id, x)) : staff.can(id, need))) { send(res, 403, { error: 'Your staff rank cannot do that.' }); return false; }
+  if (p === '/api/admin/ban') { const t = q.user.get(Number(b.who) || -1) || db.prepare('SELECT * FROM users WHERE lower(username) = lower(?)').get(String(b.who || '')); if (t && !staff.outranks(id, t.roblox_id)) { send(res, 403, { error: 'You can only act on accounts below your own staff rank.' }); return false; } }
+  if (req.method === 'POST') { const { signature, ...rest } = b; res._audit = { actor: id, action: p.replace('/api/admin/', '') + (b.action ? '.' + b.action : b.stage ? '.' + b.stage : ''), target: Number(b.robloxId) || Number(b.who) || null, detail: rest }; }
+  return true;
+}
+// Staff panel: dashboard, team, permissions, audit log, ticket queue.
+async function staffRoute(req, res, p) {
+  const u = authed(req, res); if (!u) return;
+  const id = u.roblox_id, b = req.method === 'POST' ? (await readJson(req)) || {} : {};
+  if (!staff.isStaff(id)) return send(res, 403, { error: 'Only staff can do that.' });
+  try {
+    if (req.method === 'GET' && p === '/api/admin/dashboard') {
+      const n = sql => db.prepare(sql).get().n, day = Date.now() - 864e5;
+      const tk = staff.can(id, 'tickets.view') ? social.tickets(id).tickets || [] : [], asg = staff.assignments();
+      return send(res, 200, {
+        me: staff.view(id),
+        players: n('SELECT COUNT(*) AS n FROM users'), newToday: db.prepare('SELECT COUNT(*) AS n FROM users WHERE created_at > ?').get(day).n,
+        openTickets: tk.filter(t => t.status !== 'closed').length, unassigned: tk.filter(t => t.status !== 'closed' && !asg[t.id]).length, mine: tk.filter(t => t.status !== 'closed' && asg[t.id] && asg[t.id].staffId === id).length,
+        bans: n("SELECT COUNT(*) AS n FROM bans WHERE expires_at IS NULL OR expires_at > " + Date.now()),
+        bizPending: n("SELECT COUNT(*) AS n FROM biz_members WHERE status = 'pending'"), teppPending: n("SELECT COUNT(*) AS n FROM biz_members WHERE status = 'approved' AND tepp = 'pending'"),
+        waiting: siteList.status(null).waiting, staffCount: staff.list(id).staff.length,
+        recent: staff.can(id, 'audit.view') ? staff.auditLog(id, null, 12) : [],
+      });
+    }
+    if (req.method === 'GET' && p === '/api/admin/staff') return send(res, 200, staff.list(id));
+    if (req.method === 'GET' && p === '/api/admin/signatures') return send(res, 200, legal.adminList(id, new URL(req.url, 'http://x').searchParams.get('who')));
+    if (req.method === 'POST' && p === '/api/admin/staff') return send(res, 200, staff.set(id, b));
+    if (req.method === 'POST' && p === '/api/admin/staff/perm') return send(res, 200, staff.setPerm(id, b));
+    if (req.method === 'GET' && p === '/api/admin/audit') { const sp = new URL(req.url, 'http://x').searchParams; return send(res, 200, { log: staff.auditLog(id, sp.get('who'), sp.get('limit')) }); }
+    if (req.method === 'GET' && p === '/api/admin/tickets') { staff.must(id, 'tickets.view'); const r = social.tickets(id); return send(res, 200, { tickets: r.tickets || [], assigned: staff.assignments(), canReply: staff.can(id, 'tickets.reply'), canAssign: staff.can(id, 'tickets.assign'), staff: staff.list(id).staff.filter(s => staff.can(s.robloxId, 'tickets.reply')).map(s => ({ robloxId: s.robloxId, username: s.username, rankName: s.rankName })) }); }
+    if (req.method === 'POST' && p === '/api/admin/tickets/assign') return send(res, 200, { assigned: staff.assign(id, b.ticketId, b.staffId === undefined ? null : b.staffId) });
+  } catch (e) { if (e instanceof staff.StaffError || e instanceof social.SocialError || e instanceof legal.LegalError) return send(res, e.code, { error: e.message }); throw e; }
+  return send(res, 404, { error: 'Not found' });
+}
 const SITE_CLOSED = 'TradeBlacket is invite-only right now. Join the waitlist or enter an access code.';
 async function waitlistRoute(req, res, p) {
   // /api/site-waitlist/* and /api/admin/site/* use the site list; the rest use the slots list.
@@ -293,6 +381,7 @@ async function waitlistRoute(req, res, p) {
   if (req.method === 'GET' && p === '/api/waitlist') { const s = sessionUser(req); const st = L.status(s && s.user ? s.user.roblox_id : null); if (site) { const bi = s && s.user ? security.banInfo(s.user.roblox_id) : null; st.gate = SITE_GATE; if (!SITE_GATE) st.access = true; if (bi) { st.access = false; st.banned = { reason: bi.reason, at: bi.created_at, kind: bi.kind || 'ban', until: bi.expires_at || null }; } } return send(res, 200, st); }
   const u = authed(req, res); if (!u) return;
   const b = (await readJson(req)) || {};
+  if (p.startsWith('/api/admin/') && !staffGate(req, res, u.roblox_id, site ? p.replace('/api/admin/', '/api/admin/site/') : p, b)) return;
   try {
     if (req.method === 'GET' && p === '/api/admin/bans') return send(res, 200, security.adminList(u.roblox_id));
     if (req.method === 'GET' && p === '/api/admin/giftcards') return send(res, 200, gifts.adminView(u.roblox_id));
@@ -329,21 +418,21 @@ async function waitlistRoute(req, res, p) {
 }
 const GBX = require('./gamebridge.js');
 const social = require('./social.js').create({
-  db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), secret: CFG.secret,
-  uploadDir: path.join(path.dirname(CFG.db), 'uploads'), forPlayer: s => account.forPlayer(s), badge: id => business.badge(id),
+  db, tx, log: (...a) => log(...a), isAdmin: id => staff.can(id, 'tickets.view'), secret: CFG.secret,
+  uploadDir: path.join(path.dirname(CFG.db), 'uploads'), forPlayer: s => account.forPlayer(s), badge: id => business.badge(id), staffBadge: id => staff.badge(id),
   readSave: async id => { if (!GBX.enabled()) return null; const e = await GBX.ocGet(String(id), process.env.ROBLOX_DATASTORE || 'PlayerStore_v1'); return e && e.value; },
 });
 // A player's whole account (Roblox, Trade Empire save, TradeBlacket) and staff actions on it.
 const account = require('./account.js').create({
-  db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), security, siteList, items, GB: GBX, social, referrals, withdrawable,
+  db, tx, log: (...a) => log(...a), isAdmin: id => staff.isStaff(id), outranks: (a, b) => staff.outranks(a, b), security, siteList, items, GB: GBX, social, referrals, withdrawable,
 });
 // Everything a player has done, for staff.
-const plog = require('./playerlog.js').create({ db, isAdmin: id => waitlist.isAdmin(id), security, items, GB: GBX, social, account });
+const plog = require('./playerlog.js').create({ db, isAdmin: id => staff.isStaff(id), security, items, GB: GBX, social, account });
 // Gift cards ($5 / $10 / $100 / $500), made by admins and redeemed for Rodux at the game's Rodux price.
-const gifts = require('./giftcards.js').create({ db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), universe: GBX.CFG.universe || 10108739296,
+const gifts = require('./giftcards.js').create({ db, tx, log: (...a) => log(...a), isAdmin: id => staff.can(id, 'gifts.manage') || staff.can(id, 'biz.pay'), universe: GBX.CFG.universe || 10108739296,
   isBanned: id => security.isBanned(id), siteOk: id => siteOk(id), note: (...a) => plog.add(...a) });
 // TradeBlacket Business: creator registry, the Trade Empire Partner Program, Business Cards and payouts.
-const business = require('./business.js').create({ db, tx, log: (...a) => log(...a), isAdmin: id => waitlist.isAdmin(id), secret: CFG.secret, rate: () => gifts.rate(),
+const business = require('./business.js').create({ db, tx, log: (...a) => log(...a), isAdmin: id => staff.isStaff(id), can: (id, perm) => staff.can(id, perm), signed: (id, doc) => legal.signed(id, doc), staffName: id => { const m = staff.badge(id), u = q.user.get(id); return u ? { name: u.username, rank: m ? m.rank : null } : null; }, secret: CFG.secret, rate: () => gifts.rate(),
   items, siteList, isBanned: id => security.isBanned(id), note: (...a) => plog.add(...a), gifts, withdrawable,
   origins: String(process.env.TB_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean) });
 async function businessRoute(req, res, p) {
@@ -352,12 +441,14 @@ async function businessRoute(req, res, p) {
   let m;
   try {
     if (p.startsWith('/api/admin/business')) {
+      if (!staffGate(req, res, id, p, b)) return;
       if (req.method === 'GET' && p === '/api/admin/business') return send(res, 200, business.adminView(id));
       if (req.method === 'POST' && p === '/api/admin/business/decide') return send(res, 200, business.decide(id, b));
       if (req.method === 'POST' && p === '/api/admin/business/payout') return send(res, 200, business.payout(id, b));
       if (req.method === 'POST' && p === '/api/admin/business/codes') return send(res, 200, business.giveCodes(id, b));
       if (req.method === 'POST' && p === '/api/admin/business/request') return send(res, 200, business.setRequest(id, b));
       if (req.method === 'POST' && p === '/api/admin/business/youtube') return send(res, 200, business.setYoutube(id, b));
+      if (req.method === 'POST' && p === '/api/admin/business/wage') return send(res, 200, business.setWage(id, b));
       return send(res, 404, { error: 'Not found' });
     }
     if (req.method === 'GET' && p === '/api/business/me') return send(res, 200, business.view(id));
@@ -410,6 +501,11 @@ async function socialRoute(req, res, p) {
     }
     let m;
     if (req.method === 'POST' && (m = p.match(/^\/api\/support\/(TKT-[0-9A-F]{8})\/(reply|close|reopen|account)$/))) {
+      const tOwner = social.ticketOwner(m[1]);
+      if ((tOwner !== me || m[2] === 'account') && staff.isStaff(me)) {
+        if (!staff.can(me, 'tickets.reply')) return send(res, 403, { error: 'Your staff rank can read tickets but not answer them.' });
+        res._audit = { actor: me, action: 'ticket.' + m[2] + (b.internal ? '.note' : ''), target: tOwner, detail: { ticket: m[1] } };
+      }
       if (m[2] === 'reply') return send(res, 200, social.reply(me, m[1], b.body, b.files, !!b.internal));
       if (m[2] === 'close') return send(res, 200, social.close(me, m[1]));
       if (m[2] === 'reopen') return send(res, 200, social.reopen(me, m[1]));
@@ -478,14 +574,28 @@ async function limitsRoute(req, res, p) {
   if (req.method === 'POST' && p === '/api/limits') { try { const r = limits.update(u.roblox_id, b); plog.add(u.roblox_id, 'limits', { fields: Object.keys(b).slice(0, 10) }); return send(res, 200, r); } catch (e) { return send(res, 400, { error: e.message }); } }
   return send(res, 404, { error: 'Not found' });
 }
-async function legalRoute(req, res) {
+// Signing: POST /api/legal/sign (or the older /api/legal/accept) with a typed name and a drawn signature.
+async function legalRoute(req, res, p) {
   const u = authed(req, res); if (!u) return;
-  const b = (await readJson(req)) || {};
-  if (b.doc === 'tos' && b.version === LEGAL.tos) db.prepare('UPDATE users SET tos_version = ? WHERE roblox_id = ?').run(LEGAL.tos, u.roblox_id);
-  else if (b.doc === 'cds' && b.version === LEGAL.cds) db.prepare('UPDATE users SET cds_version = ? WHERE roblox_id = ?').run(LEGAL.cds, u.roblox_id);
-  else return send(res, 400, { error: 'Unknown document or version.' });
-  log('accepted', b.doc, b.version, u.roblox_id); plog.add(u.roblox_id, 'legal', { doc: b.doc, version: b.version });
-  return send(res, 200, { ok: true });
+  const id = u.roblox_id;
+  let m;
+  try {
+    if (req.method === 'GET' && p === '/api/legal') return send(res, 200, legal.mine(id));
+    if (req.method === 'GET' && (m = p.match(/^\/api\/legal\/signature\/(SIG-[0-9A-F]{10})\.png$/))) {
+      const img = legal.image(id, m[1]); if (!img) return send(res, 404, { error: 'Not found' });
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': img.length, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' }); return res.end(img);
+    }
+    if (req.method === 'GET' && (m = p.match(/^\/api\/legal\/record\/(SIG-[0-9A-F]{10})$/))) return send(res, 200, legal.record(id, m[1]));
+    if (req.method === 'POST' && (p === '/api/legal/sign' || p === '/api/legal/accept')) {
+      security.limit(req, 'sign', 30, 36e5);
+      let raw; try { raw = await readRaw(req, 200000); } catch { return send(res, 413, { error: 'That signature image is too large. Clear it and sign again.' }); }
+      let b; try { b = JSON.parse(raw.toString('utf8')); } catch { b = {}; }
+      const r = legal.sign(id, b, security.labels(req), req.headers['user-agent']);
+      plog.add(id, 'legal', { doc: r.pack, ids: r.ids });
+      return send(res, 200, r);
+    }
+  } catch (e) { if (e instanceof legal.LegalError || e instanceof security.SecError) return send(res, e.code, { error: e.message }); throw e; }
+  return send(res, 404, { error: 'Not found' });
 }
 const moving = new Set();
 async function gameWallet(req, res) {
@@ -552,6 +662,8 @@ async function assetImage(req, res, raw) {
 /* ---------- http plumbing ---------- */
 function send(res, code, body) {
   if (res.headersSent) return;
+  // staff actions that worked go into the audit log
+  if (res._audit && code < 300) { const A = res._audit; res._audit = null; try { staff.audit(A.actor, A.action, A.target, A.detail); } catch (e) { log('audit', e.message); } }
   res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(body));
 }
@@ -596,6 +708,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/games') { try { return send(res, 200, await provider.games()); } catch (e) { log('games', e.message); return send(res, 200, { enabled: true, games: [], error: 'Games are loading. Try again shortly.' }); } }
     if (req.method === 'POST' && p === '/api/games/launch') return await gamesLaunch(req, res);
     if (p.startsWith('/api/business/') || p === '/api/admin/business' || p.startsWith('/api/admin/business/')) return await businessRoute(req, res, p);
+    if (p === '/api/fair' || p.startsWith('/api/fair/')) return await fairRoute(req, res, p);
+    if (['/api/admin/dashboard', '/api/admin/signatures', '/api/admin/staff', '/api/admin/staff/perm', '/api/admin/audit', '/api/admin/tickets', '/api/admin/tickets/assign'].includes(p)) return await staffRoute(req, res, p);
     if (p === '/api/waitlist' || p.startsWith('/api/waitlist/') || p === '/api/site-waitlist' || p.startsWith('/api/site-waitlist/') || p.startsWith('/api/admin/')) return await waitlistRoute(req, res, p);
     if (p === '/api/profile' || p.startsWith('/api/profile/') || p === '/api/support' || p.startsWith('/api/support/')) return await socialRoute(req, res, p);
     if (req.method === 'POST' && p === '/api/auth/start') return await authStart(req, res);
@@ -614,7 +728,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/game/wallet') return await gameWallet(req, res);
     if (p.startsWith('/api/items/') || p === '/api/flips' || p.startsWith('/api/flips/')) return await itemsRoute(req, res, p);
     if (p === '/api/limits' || p.startsWith('/api/limits/')) return await limitsRoute(req, res, p);
-    if (req.method === 'POST' && p === '/api/legal/accept') return await legalRoute(req, res);
+    if (p === '/api/legal' || p.startsWith('/api/legal/')) return await legalRoute(req, res, p);
     if (req.method === 'POST' && p === '/api/game/deposit') return await gameMove(req, res, 'deposit');
     if (req.method === 'POST' && p === '/api/game/withdraw') return await gameMove(req, res, 'withdraw');
     if (p.startsWith('/api/')) return send(res, 404, { error: 'Not found' });
@@ -630,4 +744,4 @@ const server = http.createServer(async (req, res) => {
   }
 });
 if (require.main === module) server.listen(CFG.port, () => log(`TradeBlacket server on :${CFG.port} · database ${CFG.db} · offline transfers ${bridge.enabled() ? 'on' : 'off (no ROBLOX_OPEN_CLOUD_KEY)'}`));
-module.exports = { server, db };
+module.exports = { server, db, jobs: { payWages: () => business.payWages() } };

@@ -37,7 +37,7 @@ const D = c => c.repeat(32).slice(0, 32);
   assert.equal(sec.shared(10, 1), true); assert.equal(sec.shared(10, 14), false); ok('shared() tells whether two accounts share a network or device');
   assert.equal(sec.ip({ headers: { 'x-real-ip': '7.7.7.7', 'x-forwarded-for': '9.9.9.9' }, socket: {} }), '7.7.7.7'); assert.equal(sec.ip({ headers: { 'x-forwarded-for': '9.9.9.9, 10.1.1.1' }, socket: {} }), '9.9.9.9'); ok('the address comes from X-Real-IP, then the first X-Forwarded-For entry');
   assert.equal(sec.ip({ headers: { 'x-real-ip': '2001:db8:1:2:aaaa::1' }, socket: {} }), '2001:db8:1:2::/64'); ok('an IPv6 address counts by its /64');
-  sec.adminUnban(1, 11); assert.equal(sec.isBanned(11), false); assert.throws(() => sec.adminUnban(10, 12), /admins/); ok('only admins unban');
+  sec.adminUnban(1, 11); assert.equal(sec.isBanned(11), false); assert.throws(() => sec.adminUnban(10, 12), /staff/); ok('only staff unban');
   sec.adminBan(1, 'P14', 'test'); assert.equal(sec.isBanned(14), true); assert.throws(() => sec.adminBan(1, '1'), /cannot be banned/); ok('admins ban by name; admins cannot be banned');
   const r0 = { headers: { 'x-real-ip': '8.8.8.8' }, socket: {} };
   for (let i = 0; i < 3; i++) sec.limit(r0, 't', 3, 6e4);
@@ -45,7 +45,7 @@ const D = c => c.repeat(32).slice(0, 32);
 
   /* ---------- through the server ---------- */
   await new Promise(r => server.listen(0, r)); base = `http://127.0.0.1:${server.address().port}`;
-  for (const id of [1, 2, 3, 4, 5]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version) VALUES (?, ?, ?, '2026-10-15')").run(id, 'U' + id, id); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
+  for (const id of [1, 2, 3, 4, 5]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version) VALUES (?, ?, ?, '2026-10-15.2')").run(id, 'U' + id, id); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
   let r;
   for (let i = 0; i < 8; i++) r = await call(null, '/api/auth/start', { username: '!' }, { 'x-real-ip': '10.0.0.9' });
   assert.equal(r.status, 400); r = await call(null, '/api/auth/start', { username: '!' }, { 'x-real-ip': '10.0.0.9' }); assert.equal(r.status, 429); assert.match(r.body.error, /Too many/); ok('sign-in attempts from one network are rate limited');

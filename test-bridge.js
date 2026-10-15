@@ -1,5 +1,6 @@
 // Offline transfers against a fake Roblox Open Cloud data store. Run: node test-bridge.js
 'use strict';
+const SIGN = require('./test-sign.js');
 const assert = require('node:assert/strict');
 const os = require('node:os'), path = require('node:path'), fs = require('node:fs');
 const dbPath = path.join(os.tmpdir(), `tb-bridge-${process.pid}.db`);
@@ -47,7 +48,7 @@ let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
 
   let r = await call('/api/game/wallet'); assert.equal(r.body.balance, 1000); assert.equal(r.body.inGame, false); ok('reads the Trade Empire balance while offline');
   r = await call('/api/game/deposit', { amount: 400 }); assert.equal(r.status, 403); assert.match(r.body.error, /Deduction Service/); assert.equal(game('77').Data.pBalance, 1000); ok('deposits are refused until the Deduction Service is accepted');
-  const me0 = await call('/api/me'); await call('/api/legal/accept', { doc: 'tos', version: me0.body.legal.versions.tos }); await call('/api/legal/accept', { doc: 'cds', version: me0.body.legal.versions.cds });
+  const me0 = await call('/api/me'); await call('/api/legal/accept', { doc: 'tos', version: me0.body.legal.versions.tos, ...SIGN }); await call('/api/legal/accept', { doc: 'cds', version: me0.body.legal.versions.cds, ...SIGN });
   r = await call('/api/game/deposit', { amount: 400 }); assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(game('77').Data.pBalance, 600); assert.equal(game('77').Data.siteWallet.deposited, 400); assert.equal(site(77).balance, 400);
   assert.equal(game('77').Extra, 'kept'); assert.deepEqual(game('77').Data.inventory, { '12': 3 }); ok('offline deposit: game -400, site +400, the rest of the save untouched');

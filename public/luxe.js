@@ -152,4 +152,4 @@ function gameFeedHtml(key){
   page.insertAdjacentHTML('beforeend',`<section class="gw card glass"><div class="sec-h" style="margin-top:0"><h3 class="sec">${ic('users',17)}Everyone's ${GAMES[key].n} results</h3><span class="note"><i class="live-dot"></i>Live</span></div><div class="gw-head"><span>Player</span><span>Bet</span><span>Multi</span><span>Won</span><span>Time</span></div><div class="gw-list" data-gw="${key}">${gameFeedHtml(key)}</div></section>`)}}
 {const base=addFeed;addFeed=function(f){base(f);const l=document.querySelector(`[data-gw="${f.game}"]`);if(l)l.innerHTML=gameFeedHtml(f.game)}}
 // make bots play every game, so each list fills up
-setInterval(()=>{const k=document.querySelector('[data-gw]');if(!k)return;const g=k.dataset.gw,b=botBet();b.game=g;addFeed(b)},3200);
+setInterval(deco(()=>{const k=document.querySelector('[data-gw]');if(!k)return;const g=k.dataset.gw,b=botBet();b.game=g;addFeed(b)}),3200);

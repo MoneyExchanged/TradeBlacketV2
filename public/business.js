@@ -57,7 +57,7 @@ function bzDraw(){
     if(!NAV.some(([k,,lk])=>k===BZ.view&&!lk))BZ.view='overview';
     shell.className='bz-shell';
     shell.innerHTML=`<nav class="bz-nav" aria-label="Business">${NAV.map(([k,l,lk])=>`<button data-bzv="${k}" class="${BZ.view===k?'on':''}" ${lk?'disabled title="For Trade Empire Partners"':''}>${bic(k==='giveaways'?'gift':k)}<span>${l}</span>${lk?bic('lock',14):''}</button>`).join('')}</nav>
-      <main class="bz-page">${st==='card'&&(BZ.view==='overview'||BZ.view==='wallet')?bzCardBuilder(m,true):bzView(m,partner)}</main>`;
+      <main class="bz-page">${st==='card'&&(BZ.view==='overview'||BZ.view==='wallet')?(m.agreement&&!m.agreement.signed&&WAPI.live?bzAgreement(m):bzCardBuilder(m,true)):bzView(m,partner)}</main>`;
   }
   bzWire();
 }
@@ -131,12 +131,25 @@ function bzOverview(m,partner){
       <section class="bz-panel"><p class="bz-label">On your card</p><div class="bz-big">${usd2(m.balance.usd)}<span>+ ${fmt0(m.balance.rodux)} Rodux</span></div>
         <div class="bz-actions"><button class="bz-btn" data-act="topup">${bic('up',16)}Top up</button><button class="bz-btn ghost" data-act="withdraw">${bic('down',16)}Withdraw</button></div>
         <p class="bz-meta">Paying with: <b>${m.pay.source==='card'?'Business Card':'TradeBlacket balance'}</b> · Confirm with: <b>${{none:'nothing',pin:'a code',device:DEVICE}[m.pay.method]}</b> <button class="bz-link" data-bzv="settings">Change</button></p></section></div>
+    ${bzWage(m)}
     <section class="bz-panel"><div class="bz-sh"><h2>Recent activity</h2><button class="bz-link" data-bzv="wallet">See all</button></div>${bzLedger(recent)}</section>`;
 }
 function bzTeppStatus(m){const R=m.review;return`<section class="bz-panel"><div class="bz-sh"><div><p class="bz-label">Partner Program status</p><h2>Under review</h2></div><span class="bz-pill wait">${bic('clock',14)}In the queue</span></div>${bzSteps(2)}
   <dl class="bz-stats"><div><dt>Estimated wait</dt><dd>${R?span(R.estimateMs):'about 2 days'}</dd><small>${R?`by ${new Date(R.expectedBy).toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'})}`:''}</small></div><div><dt>Place in the queue</dt><dd>${R?`${R.position} of ${R.pending}`:'1'}</dd><small>${R&&R.ahead?`${R.ahead} ahead of you`:'you\'re next'}</small></div><div><dt>Submitted</dt><dd>${m.teppAt?sinceTxt(m.teppAt):''}</dd></div></dl></section>`}
-const LK={payout:'Payout','withdraw-rodux':'To balance','withdraw-items':'Limiteds',topup:'Top up','card-pay':'Card payment'};
-function bzLedger(L){return L.length?`<ul class="bz-led">${L.map(l=>{const plus=l.kind==='payout'||l.kind==='topup';return`<li><span class="bz-li ${plus?'in':'out'}">${bic(plus?'down':'up',15)}</span><div><b>${esc(l.note||LK[l.kind]||l.kind)}</b><small>${LK[l.kind]||l.kind} · ${new Date(l.at).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></div><span class="bz-amt ${plus?'in':''}">${plus?'+':'−'}${l.currency==='USD'?usd2(Math.abs(l.amount)):fmt0(Math.abs(l.amount))+' Rodux'}</span></li>`}).join('')}</ul>`:'<div class="bz-empty">Nothing yet. Payouts and payments show up here.</div>'}
+const LK={wage:'Monthly wage',payout:'Payout','withdraw-rodux':'To balance','withdraw-items':'Limiteds',topup:'Top up','card-pay':'Card payment'};
+function bzLedger(L){return L.length?`<ul class="bz-led">${L.map(l=>{const plus=l.kind==='payout'||l.kind==='topup'||l.kind==='wage';return`<li><span class="bz-li ${plus?'in':'out'}">${bic(plus?'down':'up',15)}</span><div><b>${esc(l.note||LK[l.kind]||l.kind)}</b><small>${LK[l.kind]||l.kind} · ${new Date(l.at).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</small></div><span class="bz-amt ${plus?'in':''}">${plus?'+':'−'}${l.currency==='USD'?usd2(Math.abs(l.amount)):fmt0(Math.abs(l.amount))+' Rodux'}</span></li>`}).join('')}</ul>`:'<div class="bz-empty">Nothing yet. Payouts and payments show up here.</div>'}
+
+/* ---------- agreement and wage ---------- */
+function bzAgreement(m){return`<div class="bz-ph"><h1>One more step</h1><p class="bz-sub">You're a Trade Empire Partner. Before your Business Card and your Monthly Wage of TradeBlacket, read and sign the Business and Partner Program Agreement.</p></div>
+  <section class="bz-panel bz-agree"><ul class="bz-points">${['Your Monthly Wage is set by an official TradeBlacket moderator and paid onto your card each month','The wage is payment for your videos and everything else you make for us, so you promise not to give all of it away','Clear "paid partnership" labels, no real-money claims, and nothing aimed at under-18s','Wages are virtual value: never cash, never Robux'].map(t=>`<li>${bic('check',16)}${t}</li>`).join('')}</ul><div class="bz-actions"><button class="bz-btn" data-bzsign>Read and sign</button><button class="bz-link" data-legal="business">Read it first</button></div></section>`}
+function bzWage(m){
+  const w=m.wage,A=m.agreement||{};
+  if(A.signed===false&&WAPI.live)return`<section class="bz-panel bz-wage warn"><div class="bz-sh"><div><p class="bz-label">Monthly wage</p><h2>Sign the Partner Agreement</h2></div><span class="bz-pill bad">Not signed</span></div><p class="bz-sub">Wages are only paid once you've signed the current Business and Partner Program Agreement.</p><div class="bz-actions"><button class="bz-btn" data-bzsign>Read and sign</button></div></section>`;
+  if(!w)return`<section class="bz-panel bz-wage"><p class="bz-label">Monthly wage</p><h2>Not set yet</h2><p class="bz-sub">Your Monthly Wage of TradeBlacket is set by an official moderator, based on your content, how often you post and your reach.</p></section>`;
+  return`<section class="bz-panel bz-wage"><div class="bz-sh"><div><p class="bz-label">Monthly wage</p><h2>${w.currency==='USD'?usd2(w.amount):fmt0(w.amount)+' Rodux'} <small>a month</small></h2></div><span class="bz-pill ${w.paused?'muted':'ok'}">${w.paused?'Paused':'Active'}</span></div>
+    <dl class="bz-stats"><div><dt>Next payment</dt><dd>${w.next?new Date(w.next).toLocaleDateString(undefined,{day:'numeric',month:'short'}):'–'}</dd><small>${w.next?'onto your card':''}</small></div><div><dt>Last paid</dt><dd>${w.last?new Date(w.last).toLocaleDateString(undefined,{day:'numeric',month:'short'}):'–'}</dd></div><div><dt>Set by</dt><dd>${w.setBy?esc(w.setBy.name):'–'}</dd><small>${w.setBy&&w.setBy.rank?esc(w.setBy.rank):''}</small></div></dl>
+    ${w.note?`<p class="bz-quote">${esc(w.note)}</p>`:''}<p class="bz-meta">The wage is payment for your videos and everything else you make for TradeBlacket. You can give part of it away, but never the whole wage. <button class="bz-link" data-legal="business">Agreement</button></p></section>`;
+}
 
 /* ---------- the card ---------- */
 function bzCardHtml(c,no,bal){
@@ -260,6 +273,7 @@ function bzWire(){
   $$('[data-addlink]',sh).forEach(b=>b.onclick=()=>{const box=b.previousElementSibling;if($$('.bz-lr',box).length<+box.dataset.max)box.insertAdjacentHTML('beforeend',bzLinkRow({platform:'other',url:''}))});
   $$('[data-bzv]',sh).forEach(b=>b.onclick=()=>{BZ.view=b.dataset.bzv;BZ.sub=null;bzDraw()});
   $$('[data-sub]',sh).forEach(b=>b.onclick=()=>{BZ.sub=b.dataset.sub;bzDraw()});
+  $$('[data-bzsign]',sh).forEach(b=>b.onclick=async()=>{if(await signSheet('business')){await bzLoad();bzDraw()}});
   $$('[data-act]',sh).forEach(b=>b.onclick=()=>({topup:bzTopup,withdraw:bzWithdraw,items:bzItems})[b.dataset.act]());
   $$('[data-copy]',sh).forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.copy).then(()=>toast('Copied.'),()=>{}));
   $$('[data-bzsup]',sh).forEach(b=>b.onclick=()=>{bzClose();setTimeout(()=>go('support','new:business'),50)});
@@ -353,9 +367,10 @@ function admBzDraw(box,D){
   box.innerHTML=`<div class="sec-h"><h3 class="sec">Waiting for a decision</h3><span class="note">${pend.length} Business · ${tepp.length} TEPP</span></div>
     ${pend.map(m=>app(m,'member')).join('')}${tepp.map(m=>app(m,'tepp')).join('')}${pend.length+tepp.length?'':'<p class="note">Nothing waiting.</p>'}
     <div class="sec-h"><h3 class="sec">Members (${mem.length})</h3><span class="note">1 US dollar = ${fmt0(D.roduxPerUsd)} Rodux</span></div>
-    ${plTable(['Creator','Role','Card','On card','YouTube','Pay the card','Giveaway codes',''],mem.map(m=>[`${plLink(m.robloxId,m.username)}<br><small>${esc((m.form||{}).name||'')}</small>`,m.tepp==='approved'?'<span class="ac-pill is-gold">Partner</span>':'Business'+(m.tepp==='rejected'?' <small>(TEPP declined)</small>':''),m.card?`<small>${esc(m.cardNo)}</small>`:'<small>No card yet</small>',`${usd2(m.balance.usd)}<br><small>${fmt0(m.balance.rodux)} Rodux</small>`,
+    ${plTable(['Creator','Role','Card','On card','YouTube','Pay the card','Monthly wage','Giveaway codes',''],mem.map(m=>[`${plLink(m.robloxId,m.username)}<br><small>${esc((m.form||{}).name||'')}</small>`,m.tepp==='approved'?'<span class="ac-pill is-gold">Partner</span>':'Business'+(m.tepp==='rejected'?' <small>(TEPP declined)</small>':''),m.card?`<small>${esc(m.cardNo)}</small>`:'<small>No card yet</small>',`${usd2(m.balance.usd)}<br><small>${fmt0(m.balance.rodux)} Rodux</small>`,
       m.youtube.url?`<a href="${esc(m.youtube.url)}" target="_blank" rel="noopener noreferrer">Channel</a> ${m.youtube.verified?'✓':`<button class="lnk" data-bzyt="${m.robloxId}">Verify</button>`}`:'<small>Not linked</small>',
       m.tepp==='approved'?`<div class="abz-pay"><input class="txt" type="number" min="0" step="any" placeholder="Amount" data-bzamt="${m.robloxId}"><select class="txt" data-bzcur="${m.robloxId}"><option value="usd">USD</option><option value="rodux">Rodux</option></select><button class="cta inline" data-bzpay="${m.robloxId}">Pay</button></div>`:'<small>Partners only</small>',
+      m.tepp==='approved'?`<div class="abz-pay"><input class="txt" type="number" min="0" step="any" placeholder="${m.wage?m.wage.amount:'0'}" value="${m.wage?m.wage.amount:''}" data-bzwa="${m.robloxId}"><select class="txt" data-bzwc="${m.robloxId}"><option value="USD" ${!m.wage||m.wage.currency==='USD'?'selected':''}>USD</option><option value="RODUX" ${m.wage&&m.wage.currency==='RODUX'?'selected':''}>Rodux</option></select><button class="cta ghost inline" data-bzwage="${m.robloxId}">Set</button></div><small>${m.wage?`${m.wage.currency==='USD'?usd2(m.wage.amount):fmt0(m.wage.amount)+' Rodux'} a month${m.wage.next?' · next '+new Date(m.wage.next).toLocaleDateString():''}${m.wage.setBy?' · set by '+esc(m.wage.setBy.name):''}`:'No wage'}${m.agreement?'':' · <b>agreement not signed</b>'}</small>`:'<small>Partners only</small>',
       `<div class="abz-pay"><select class="txt" data-bzcu="${m.robloxId}"><option>5</option><option selected>10</option><option>100</option><option>500</option></select><input class="txt" type="number" min="1" max="100" value="1" data-bzcn="${m.robloxId}"><button class="cta ghost inline" data-bzcodes="${m.robloxId}">Give</button></div><small>${m.codes} given</small>`,
       `<button class="lnk" data-bzsus="${m.robloxId}">Suspend</button>`]),'No members yet.')}
     <div class="sec-h"><h3 class="sec">Feature requests</h3></div>
@@ -364,6 +379,7 @@ function admBzDraw(box,D){
   $$('[data-bzdec]',box).forEach(b=>b.onclick=()=>{const id=b.dataset.bzdec,ok=b.dataset.ok==='1';run('/api/admin/business/decide',{robloxId:id,stage:b.dataset.stage,approve:ok,note:($(`[data-bznote="${id}"]`,box)||{}).value},ok?'Approved.':'Declined.')});
   $$('[data-bzpay]',box).forEach(b=>b.onclick=()=>{const id=b.dataset.bzpay;run('/api/admin/business/payout',{robloxId:id,amount:$(`[data-bzamt="${id}"]`,box).value,currency:$(`[data-bzcur="${id}"]`,box).value},'Paid to their card.')});
   $$('[data-bzcodes]',box).forEach(b=>b.onclick=()=>{const id=b.dataset.bzcodes;run('/api/admin/business/codes',{robloxId:id,usd:Number($(`[data-bzcu="${id}"]`,box).value),count:$(`[data-bzcn="${id}"]`,box).value},'Giveaway codes sent.')});
+  $$('[data-bzwage]',box).forEach(b=>b.onclick=()=>{const id=b.dataset.bzwage;run('/api/admin/business/wage',{robloxId:id,amount:$(`[data-bzwa="${id}"]`,box).value||0,currency:$(`[data-bzwc="${id}"]`,box).value},'Monthly wage saved.')});
   $$('[data-bzyt]',box).forEach(b=>b.onclick=()=>run('/api/admin/business/youtube',{robloxId:b.dataset.bzyt,verified:true},'Channel marked verified.'));
   $$('[data-bzsus]',box).forEach(b=>b.onclick=()=>run('/api/admin/business/decide',{robloxId:b.dataset.bzsus,stage:'suspend'},'Membership suspended.'));
   $$('[data-bzrq]',box).forEach(b=>b.onclick=()=>{const id=b.dataset.bzrq;run('/api/admin/business/request',{id,status:$(`[data-bzrs="${id}"]`,box).value,reply:$(`[data-bzrr="${id}"]`,box).value},'Request updated.')});

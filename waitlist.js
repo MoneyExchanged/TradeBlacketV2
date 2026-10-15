@@ -13,7 +13,7 @@ const norm = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 class WaitError extends Error { constructor(msg, code = 400) { super(msg); this.code = code; } }
 
-function create({ db, tx, scope = 'slots', blocked = () => false }) {
+function create({ db, tx, scope = 'slots', blocked = () => false, isAdmin: staffCheck = null }) {
   const W = scope === 'site' ? 'site_waitlist' : 'waitlist', A = scope === 'site' ? 'site_access' : 'slot_access';
   db.exec(`CREATE TABLE IF NOT EXISTS ${W} (pos INTEGER PRIMARY KEY AUTOINCREMENT, roblox_id INTEGER NOT NULL UNIQUE, joined_at INTEGER NOT NULL)`);
   db.exec(`CREATE TABLE IF NOT EXISTS ${A} (roblox_id INTEGER PRIMARY KEY, via TEXT NOT NULL, granted_at INTEGER NOT NULL)`);
@@ -39,7 +39,7 @@ function create({ db, tx, scope = 'slots', blocked = () => false }) {
     list: db.prepare(`SELECT w.pos, w.roblox_id, u.username, w.joined_at, a.via, a.granted_at FROM ${W} w LEFT JOIN users u ON u.roblox_id = w.roblox_id LEFT JOIN ${A} a ON a.roblox_id = w.roblox_id ORDER BY w.pos LIMIT 500`),
   };
   const now = () => Date.now();
-  const isAdmin = id => ADMINS.has(Number(id));
+  const isAdmin = staffCheck || (id => ADMINS.has(Number(id)));
   // A banned player (blocked) never has access and cannot join or redeem.
   const hasAccess = id => isAdmin(id) || (!blocked(id) && !!q.access.get(id));
   const BANNED = 'This account is banned, so it cannot join the waitlist.';

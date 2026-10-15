@@ -21,7 +21,7 @@ const STKMAP=Object.fromEntries(STK.list.map(s=>[s.t,s]));
   });
 })();
 const HEAD=[['beats earnings expectations',.06,.12],['announces a new partnership',.03,.08],['opens a second headquarters',.02,.05],['CEO steps down unexpectedly',-.1,-.04],['misses quarterly targets',-.09,-.03],['faces a supply delay',-.06,-.02],['launches a new product line',.03,.09],['gets a rating upgrade',.02,.05],['gets a rating downgrade',-.05,-.02]];
-setInterval(()=>{
+setInterval(deco(()=>{
   STK.list.forEach(s=>{
     s.p=Math.max(.5,s.p*Math.exp((rnd()-.5)*s.v*.45));
     const c=s.cur;c.c=s.p;c.h=Math.max(c.h,s.p);c.l=Math.min(c.l,s.p);c.n++;
@@ -30,7 +30,7 @@ setInterval(()=>{
   if(rnd()<.03){const s=pick(STK.list),[h,a,b]=pick(HEAD),j=a+rnd()*(b-a);s.p=Math.max(.5,s.p*(1+j));s.cur.c=s.p;s.cur.h=Math.max(s.cur.h,s.p);s.cur.l=Math.min(s.cur.l,s.p);STK.news.unshift({t:s.t,txt:`${s.n} ${h}`,j,at:Date.now()});STK.news.length=Math.min(STK.news.length,20);if(STK.onNews)STK.onNews()}
   if(STK.onTick)STK.onTick();
   if(rnd()<.1)store.set('stk',Object.fromEntries(STK.list.map(s=>[s.t,s.p])));
-},1000);
+}),1000);
 const port=()=>{S.port=S.port||{};return S.port};
 const posVal=()=>Object.entries(port()).reduce((a,[t,p])=>a+(STKMAP[t]?p.sh*STKMAP[t].p:0),0);
 const pct=(a,b)=>(a-b)/b*100;

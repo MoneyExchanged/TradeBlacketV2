@@ -1,6 +1,7 @@
 // TradeBlacket Business (business.js).
 // Run: node test-business.js
 'use strict';
+const SIGN = require('./test-sign.js');
 const assert = require('node:assert/strict');
 const os = require('node:os'), path = require('node:path');
 process.env.GAME_WEBHOOK_SECRET = 'test-secret-0123456789abcdef';
@@ -8,7 +9,7 @@ process.env.DB_PATH = path.join(os.tmpdir(), `tb-biz-${process.pid}.db`);
 process.env.ADMIN_ROBLOX_IDS = '1';
 process.env.TB_ORIGINS = 'https://test.tradeblacket.local';
 const crypto = require('node:crypto');
-const { server, db } = require('./server.js');
+const { server, db, jobs } = require('./server.js');
 let base; const jar = {};
 async function call(who, p, body) { const r = await fetch(base + p, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', ...(who ? { cookie: jar[who] } : {}) }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, body: await r.json() }; }
 let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
@@ -16,7 +17,7 @@ const APP = { name: 'Builder Bob', links: [{ platform: 'youtube', url: 'https://
 
 (async () => {
   await new Promise(r => server.listen(0, r)); base = `http://127.0.0.1:${server.address().port}`;
-  for (const id of [1, 2, 3]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version) VALUES (?, ?, 0, '2026-10-15')").run(id, 'U' + id); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
+  for (const id of [1, 2, 3]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version) VALUES (?, ?, 0, '2026-10-15.2')").run(id, 'U' + id); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
   let r = await call(2, '/api/business/me'); assert.equal(r.body.status, 'none'); assert.match(r.body.cardNo, /^TBB [A-Z0-9]{4} [A-Z0-9]{4} [A-Z0-9]{4}$/); ok('a signed-in player can open Business');
   r = await call(2, '/api/business/apply', { ...APP, links: [{ platform: 'youtube', url: 'not a link' }] }); assert.equal(r.status, 400);
   r = await call(2, '/api/business/apply', { ...APP, agree: false }); assert.equal(r.status, 400); ok('applications need real links and the terms accepted');
@@ -30,6 +31,8 @@ const APP = { name: 'Builder Bob', links: [{ platform: 'youtube', url: 'https://
   r = await call(2, '/api/business/card', { name: 'Bob' }); assert.equal(r.status, 403); ok('Business Cards wait for TEPP');
   r = await call(2, '/api/business/tepp', { plan: 'Weekly trading guides, value updates and giveaways for Trade Empire players.', cadence: 'Twice a week', sample: 'https://youtu.be/abc', code: 'bob', agree: true }); assert.equal(r.body.tepp, 'pending');
   r = await call(1, '/api/admin/business/decide', { robloxId: 2, stage: 'tepp', approve: true }); r = await call(2, '/api/me'); assert.equal(r.body.business.role, 'Partner'); ok('TEPP approval makes them a Partner');
+  r = await call(2, '/api/business/card', { name: 'Builder Bob' }); assert.equal(r.status, 403); assert.match(r.body.error, /Agreement/);
+  r = await call(2, '/api/legal/sign', { docs: ['business'], ...SIGN }); assert.equal(r.status, 200); ok('the Business Card waits for the signed Business and Partner Program Agreement');
   r = await call(2, '/api/business/card', { name: 'Builder Bob', tagline: 'Trading every day', accent: 'gold', links: [{ platform: 'youtube', url: 'https://www.youtube.com/@builderbob' }] }); assert.equal(r.body.card.name, 'Builder Bob'); ok('partners create their Business Card');
   r = await call(1, '/api/admin/business/payout', { robloxId: 2, currency: 'usd', amount: 25 }); r = await call(1, '/api/admin/business/payout', { robloxId: 2, currency: 'rodux', amount: 5000 });
   r = await call(2, '/api/business/me'); assert.equal(r.body.balance.usd, 25); assert.equal(r.body.balance.rodux, 5000); ok('staff pay the card in dollars and in Rodux');
@@ -82,5 +85,22 @@ const APP = { name: 'Builder Bob', links: [{ platform: 'youtube', url: 'https://
   const other = crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' }); const a2 = await assertion(9); a2.signature = crypto.sign('sha256', Buffer.from('x'), other.privateKey).toString('base64url');
   r = await call(2, '/api/business/pay', { amount: 50, auth: { assertion: a2 } }); assert.equal(r.status, 400); ok('a signature from another key is refused');
   r = await call(1, '/api/admin/player?id=2'); assert.ok(r.body.events.some(e => /Business: Became a Trade Empire Partner/.test(e.title))); ok('every step is in the player log');
+  /* ---------- the Monthly Wage of TradeBlacket ---------- */
+  db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version) VALUES (9, 'Trial9', 0, ?)").run(require('./public/legaldocs.js').tos.v); db.prepare('INSERT INTO sessions VALUES (?, 9, 0)').run('9'.repeat(64)); jar[9] = 'tb_session=' + '9'.repeat(64);
+  r = await call(1, '/api/admin/staff', { who: 'Trial9', rank: 'trial' }); assert.equal(r.status, 200);
+  r = await call(9, '/api/admin/business/wage', { robloxId: 2, amount: 50, currency: 'USD' }); assert.equal(r.status, 403); ok('only staff allowed to set wages can set them');
+  r = await call(1, '/api/admin/business/wage', { robloxId: 3, amount: 50 }); assert.equal(r.status, 400);
+  const before = (await call(2, '/api/business/me')).body.balance.usd;
+  r = await call(1, '/api/admin/business/wage', { robloxId: 2, amount: 50, currency: 'USD', note: 'Two videos a week' }); assert.equal(r.status, 200);
+  r = await call(2, '/api/business/me'); assert.equal(r.body.wage.amount, 50); assert.equal(r.body.wage.setBy.name, 'U1'); assert.equal(r.body.wage.needsSignature, false); ok('an official moderator sets the monthly wage, and the partner sees who set it');
+  let paid = jobs.payWages(); assert.equal(paid.length, 1);
+  r = await call(2, '/api/business/me'); assert.equal(r.body.balance.usd, before + 50); assert.equal(r.body.ledger[0].kind, 'wage'); assert.match(r.body.ledger[0].note, /Monthly wage/);
+  assert.ok(r.body.wage.next > Date.now() + 27 * 864e5); ok('the wage is paid onto the card and the next one is a month later');
+  paid = jobs.payWages(); assert.equal(paid.length, 0); ok('it is never paid twice for the same month');
+  db.prepare('UPDATE biz_members SET wage_next_at = ? WHERE roblox_id = 2').run(Date.now() - 1000); db.prepare("DELETE FROM signatures WHERE roblox_id = 2 AND doc = 'business'").run();
+  paid = jobs.payWages(); assert.equal(paid.length, 0); r = await call(2, '/api/business/me'); assert.equal(r.body.wage.needsSignature, true); ok('no wage without a signed Business and Partner Program Agreement');
+  r = await call(2, '/api/legal/sign', { docs: ['business'], ...SIGN }); paid = jobs.payWages(); assert.equal(paid.length, 1); ok('signing it releases the wage');
+  r = await call(1, '/api/admin/business/wage', { robloxId: 2, amount: 0 }); r = await call(2, '/api/business/me'); assert.equal(r.body.wage, null); ok('a wage of 0 ends it');
+
   console.log(`\nAll ${n} checks passed.`); server.close(); process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

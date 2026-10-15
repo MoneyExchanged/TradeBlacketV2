@@ -30,12 +30,12 @@ PAGES.crash=el=>{
   let W=0,H=0;
   const size=()=>{const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;W=r.width;H=r.height;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0)};
   size();const ro=new ResizeObserver(size);ro.observe(cv);
-  const stars=Array.from({length:70},()=>({x:rnd(),y:rnd(),s:rnd()*1.3+.3,v:rnd()*.6+.15}));
+  const stars=deco(()=>Array.from({length:70},()=>({x:rnd(),y:rnd(),s:rnd()*1.3+.3,v:rnd()*.6+.15})))();
   const K=0.11,WAIT=5000,AFTER=3200;
   let lastMy=null,phase='wait',t0=performance.now(),cp=1,mult=1,my=null,queued=null,bots=[],raf=0,boomAt=0,lastTxt='';
   const drawHist=()=>{$('#hist').innerHTML=CR.hist.slice(0,18).map(m=>`<span class="pill ${pillCls(m)}">${m.toFixed(2)}×</span>`).join('')};
   drawHist();
-  function makeBots(){bots=Array.from({length:ri(4,8)},()=>({u:bot(pick(NAMES)),bet:pick([5,10,25,50,100,250]),target:r2(1.05+Math.pow(rnd(),2)*7),cashed:0}))}
+  const makeBots=deco(()=>{bots=Array.from({length:ri(4,8)},()=>({u:bot(pick(NAMES)),bet:pick([5,10,25,50,100,250]),target:r2(1.05+Math.pow(rnd(),2)*7),cashed:0}))});
   function row(u,bet,st,cls,isMe){return `<div class="rrow${isMe?' me':''}">${avatar(u,22)}<span class="nm">${esc(u.name)}</span><span class="num">${chip(12)}${fmt0(bet)}</span><span class="st ${cls}">${st}</span></div>`}
   function drawPlayers(){
     const rows=[],mine=my&&phase!=='boom'?my:(phase==='boom'?lastMy:null);
@@ -180,10 +180,10 @@ PAGES.roulette=el=>{
     const now=performance.now(),e=now-t0;
     if(phase==='bet'){
       const left=Math.max(0,BET-e);$('#rtxt').textContent=`Rolling in ${(left/1000).toFixed(1)}s`;$('#rbar').style.transform=`scaleX(${left/BET})`;
-      if(rnd()<.14){const c=rnd()<.07?'g':rnd()<.5?'r':'b';bets[c].push({u:bot(pick(NAMES)),amt:pick([5,10,25,50,100,250,500])});drawBets()}
+      deco(()=>{if(rnd()<.14){const c=rnd()<.07?'g':rnd()<.5?'r':'b';bets[c].push({u:bot(pick(NAMES)),amt:pick([5,10,25,50,100,250,500])});drawBets()}})();
       if(e>=BET){
         phase='spin';t0=now;res=Math.floor(rnd()*15);$$('.rbet',el).forEach(b=>b.disabled=true);$('#rtxt').textContent='Rolling…';$('#rbar').style.transform='scaleX(0)';
-        jit=(rnd()-.5)*60;idx=8*15+RORD.indexOf(res);place(idx,jit,REDUCED?200:SPIN);
+        jit=(cryptoRnd()-.5)*60;idx=8*15+RORD.indexOf(res);place(idx,jit,REDUCED?200:SPIN);
       }
     }else if(phase==='spin'){
       if(e>=(REDUCED?250:SPIN)+60){

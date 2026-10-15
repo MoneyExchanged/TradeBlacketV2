@@ -89,6 +89,35 @@ While an application waits, the portal shows its **status**: place in the queue,
 
 **Paying with the card.** Partners can **top up** the card from their TradeBlacket balance (withdrawable Rodux only; bonus Rodux stays). In Payment settings (in the portal, and on the main Settings page) they pick what pays withdrawals to Trade Empire and marketplace purchases: their **TradeBlacket balance** or their **Business Card**. Card payments are confirmed with **nothing**, a **4 to 6 digit code** (scrypt hashed; 5 wrong codes pause card payments for 15 minutes) or **this device** (a WebAuthn passkey: Windows Hello, Touch ID, Face ID or the phone's screen lock; the server checks the signature against the stored public key, no extra packages). Changing the method needs the current one. A card payment moves the exact amount from the card to the balance (`card-pay` in the ledger, card Rodux first, then dollars) and the withdrawal or purchase follows. Rodux that leaves the site for Trade Empire is still capped by the game's own rule: no more than the player's net site deposits.
 
+**Monthly Wage of TradeBlacket.** Staff with the `biz.wage` permission (Head Admin, HR, Owner, Partner Manager, Finance) set a partner's monthly wage in US dollar value or Rodux (Admin, then Business, the Monthly wage column; 0 ends it). The server pays due wages every hour onto the Business Card (ledger kind `wage`) and moves the date on by a calendar month. A wage is only paid while the partner has signed the current Business and Partner Program Agreement, which also holds the promise not to give the whole wage away. Partners see the amount, next date and who set it on their Overview.
+
+## Staff ranks and the staff panel
+
+`staff.js`, shown at **tradeblacket.com/admin**. Ranks, lowest first: Trial Moderator, Moderator, Senior Moderator, Admin, Head Admin, HR, Owner. Side roles add permissions on their own or on top of a rank: Support Agent, Partner Manager, Finance, Developer, Trust & Safety. Owners are `ADMIN_ROBLOX_IDS`.
+
+| Rank | Adds |
+|---|---|
+| Trial Moderator | read tickets, look up players, see bans, warn, staff notes |
+| Moderator | kick, suspend, Business member decisions, feature requests |
+| Senior Moderator | ban, give or take site access, waitlists and codes, verify YouTube |
+| Admin | **answer and assign tickets**, lift bans, gift cards, Partner decisions, audit log |
+| Head Admin | terminate, pay cards, set wages, site settings, signed agreements |
+| HR / Owner | everything, including hiring and the permission matrix |
+
+HR can switch single permissions per rank or role (Permissions page; HR and Owner stay locked). Nobody acts on an account at or above their own rank or hands out a rank at or above their own. Every `/api/admin/*` call goes through one gate in `server.js` that checks the permission, and every staff action that succeeds is written to `staff_audit`. The panel has a dashboard, a ticket queue with assignment, players, bans, Business, gift cards, site access, the team, permissions, the audit log and signed agreements. Profiles show the staff rank.
+
+## Provably fair numbers
+
+`fair.js`. Each player has a server seed (only its SHA-256 is shown, plus the hash of the next one), a client seed and a nonce. Each nonce gives 64 numbers: `HMAC_SHA256(serverSeed, clientSeed:nonce:cursor)` for cursor 0–7, 4 bytes per number. The browser fetches batches (`POST /api/fair/batch`) and `rnd()` in `core.js` takes game numbers from them; background animation and the made-up bots run inside `deco()` and use the browser's own randomness. Client seed automation: rotate after N nonces (default 1,000), daily, or off, with a fresh random client seed at every rotation unless the player keeps their own. Rotating reveals the server seed; Docs, Provably fair shows the seeds, the rounds this browser used and checks them, and Docs, Verify recomputes numbers in the browser. `GET /api/fair/verify` is public. Note: game balances are still kept in the browser, so this proves the numbers were committed in advance, not that the browser played them honestly.
+
+## Legal documents and e-signatures
+
+`public/legaldocs.js` is the one source for the site and the server: Terms of Service, License Agreement, Privacy Policy, Cookie Policy, Community Rules, Responsible Play Policy, Gift Card Terms, Trade Empire Currency Deduction Service, and the Business and Partner Program Agreement. Drafts: have them reviewed by a lawyer.
+
+`legal.js` stores signatures. Players sign packs: the site pack (the first seven, before playing; sets `tos_version`), the deduction service (before the first deposit; sets `cds_version`) and the Business agreement (before a card and wages). The signing sheet makes the player scroll through every document, type their name and draw a signature on a scribble pad (mouse, trackpad, pen or finger). Each signature row keeps the document version, SHA-256 of the exact signed text, the name, the PNG and its hash, stroke count and ink length, hashed network and device labels, the user agent and the time. Players see and download signed copies in Settings; staff with `legal.view` search them in the panel. A checkbox alone no longer accepts anything. Changing a document's text or version makes everyone sign again. A cookie notice explains that only necessary cookies are used. Security hashes older than 12 months are deleted, as the Privacy Policy says.
+
+The Docs centre is at **tradeblacket.com/docs** (also /terms, /privacy, /cookies, /fair) and can be read without signing in.
+
 ## Gift cards and money display
 
 `giftcards.js`. Admins (Admin, then Gift cards) make $5, $10, $100 or $500 cards (`TBG-XXXX-XXXX-XXXX`, single use, optional expiry and a note for the creator or giveaway) and hand them to content creators. Players cannot buy them; they redeem a code on the Gift card page.

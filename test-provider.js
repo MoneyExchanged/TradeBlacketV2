@@ -1,6 +1,7 @@
 // Studio games (LuckyStreak seamless wallet) against a fake LuckyStreak.
 // Run: node test-provider.js
 'use strict';
+const SIGN = require('./test-sign.js');
 const assert = require('node:assert/strict');
 const os = require('node:os'), path = require('node:path');
 process.env.SITE_WAITLIST = 'off';
@@ -42,7 +43,7 @@ let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
   let r = await site('/api/games'); assert.equal(r.body.enabled, true); assert.equal(r.body.games[0].name, 'Gold Rush'); assert.equal(r.body.games[0].studio, 'Kalamba');
   ok('lists studio games from LuckyStreak');
   r = await site('/api/games/launch', { gameId: 'g1' }); assert.equal(r.status, 403); ok('games need the Terms accepted first');
-  const v = (await site('/api/me')).body.legal.versions; await site('/api/legal/accept', { doc: 'tos', version: v.tos });
+  const v = (await site('/api/me')).body.legal.versions; await site('/api/legal/accept', { doc: 'tos', version: v.tos, ...SIGN });
   r = await site('/api/games/launch', { gameId: 'g1' }); assert.equal(r.status, 403); assert.equal(r.body.waitlist, true);
   db.prepare("INSERT INTO slot_access (roblox_id, via, granted_at) VALUES (7, 'code', 0)").run();
   r = await site('/api/games/launch', { gameId: 'g1' }); assert.equal(r.status, 200); assert.equal(r.body.url, 'https://play.ls.example/g1?t=1');

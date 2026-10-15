@@ -21,14 +21,14 @@ function randCatItem(){const r=rnd();const pool=r<.55?CAT.filter(i=>i.v<100):r<.
 for(let i=0;i<46;i++)MK.list.push(mkListing(randCatItem()));
 for(let i=0;i<14;i++){const id=randCatItem();MK.sales.push({item:id,price:r2(ITEM[id].v*(.9+rnd()*.25)),buyer:bot(pick(NAMES)),t:Date.now()-ri(60,7200)*1000})}
 MK.sales.sort((a,b)=>b.t-a.t);
-setInterval(()=>{
+setInterval(deco(()=>{
   let ch=false;
   if(rnd()<.45){const bots=MK.list.filter(l=>!l.mine);const l=pick(bots);if(l){MK.list.splice(MK.list.indexOf(l),1);MK.sales.unshift({item:l.item,price:l.price,buyer:bot(pick(NAMES)),t:Date.now()});ch=true}}
   if(rnd()<.5||MK.list.length<40){MK.list.unshift(mkListing(randCatItem()));ch=true}
   MK.list.filter(l=>l.mine).forEach(l=>{const v=ITEM[l.item].v;if(l.price<=v*1.12&&rnd()<(l.price<=v?.35:.15)){MK.list.splice(MK.list.indexOf(l),1);const net=r2(l.price*.95);pay(net);MK.sales.unshift({item:l.item,price:l.price,buyer:bot(pick(NAMES)),t:Date.now(),mine:1});toast(`Your ${ITEM[l.item].n} sold for ${fmt(l.price)}. ${fmt(net)} Rodux added after the 5% fee.`,'win',l.item);ch=true}});
   MK.sales.length=Math.min(MK.sales.length,60);
   if(ch&&typeof MK.redraw==='function')MK.redraw();
-},4000);
+}),4000);
 const ago=t=>{const s=Math.max(1,Math.floor((Date.now()-t)/1000));return s<60?s+'s ago':s<3600?Math.floor(s/60)+'m ago':Math.floor(s/3600)+'h ago'};
 function lstCard(l){
   const v=ITEM[l.item].v,d=(l.price-v)/v*100;
@@ -101,7 +101,7 @@ PAGES.market=(el,openId)=>{
 /* ---------- predictions ---------- */
 const PX={BTC:{p:100000,h:[]},ETH:{p:3600,h:[]},SOL:{p:180,h:[]}};
 Object.values(PX).forEach(c=>{for(let i=0;i<60;i++){c.p*=1+(rnd()-.5)*.003;c.h.push(c.p)}});
-setInterval(()=>Object.values(PX).forEach(c=>{c.p*=1+(rnd()-.498)*.0025;c.h.push(c.p);if(c.h.length>60)c.h.shift()}),1000);
+setInterval(deco(()=>Object.values(PX).forEach(c=>{c.p*=1+(rnd()-.498)*.0025;c.h.push(c.p);if(c.h.length>60)c.h.shift()})),1000);
 const PR={list:[],mine:[]};
 const PCAT={football:'Football',crypto:'Crypto',esports:'Esports',empire:'Trade Empire',community:'Community'};
 function mkMarket(cat,q,opts,mins,o={}){

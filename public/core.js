@@ -4,7 +4,12 @@
    ========================================================= */
 const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
-const rnd=()=>{const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]/4294967296};
+const cryptoRnd=()=>{const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]/4294967296};
+// Game numbers come from the provably fair stream (fair.js fills FQ) when signed in. Background
+// animation and the made-up bots run inside deco(), which always uses the browser's own randomness.
+const FQ={off:0,next:null};
+const rnd=()=>{if(!FQ.off&&FQ.next){const v=FQ.next();if(v!==undefined)return v}return cryptoRnd()};
+const deco=f=>(...a)=>{FQ.off++;try{return f(...a)}finally{FQ.off--}};
 const ri=(a,b)=>a+Math.floor(rnd()*(b-a+1));
 const pick=a=>a[Math.floor(rnd()*a.length)];
 const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
@@ -51,6 +56,9 @@ const ICON={
   stocks:'<path d="M6 4v16M18 4v16M12 3v18"/><rect x="4" y="8" width="4" height="7" rx=".8"/><rect x="16" y="6" width="4" height="9" rx=".8"/><rect x="10" y="11" width="4" height="6" rx=".8"/>',
   shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
   x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  book:'<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20M8 7h8"/>',
+  gift:'<rect x="4" y="9" width="16" height="11" rx="2"/><path d="M12 9v11M4 13h16M12 9c-2-4-6-3-5 0M12 9c2-4 6-3 5 0"/>',
+  download:'<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
   check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   trend:'<path d="M3 17l6-6 4 4 8-8M15 7h6v6"/>',
   search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
@@ -401,7 +409,7 @@ function addFeed(f){
   if(el&&feedFilter(f)){if(el.querySelector('.note'))drawFeed();else{el.querySelector('.hd').insertAdjacentHTML('afterend',feedRow(f,true));const rows=el.querySelectorAll('.frow:not(.hd)');if(rows.length>10)rows[rows.length-1].remove()}}
   if(typeof drawBoard==='function')drawBoard();
 }
-setInterval(()=>addFeed(botBet()),2100);
+setInterval(deco(()=>addFeed(botBet())),2100);
 
 /* ---------- live drops ticker ---------- */
 function pushDrop(d){
@@ -410,9 +418,9 @@ function pushDrop(d){
   while(tr.children.length>26)tr.lastElementChild.remove();
 }
 function botDrop(){const c=rnd()<.7?pick(SHOP.slice(0,4)):pick(SHOP);return{u:bot(pick(NAMES)),id:pickFrom(c),src:c.n}}
-for(let i=0;i<20;i++)pushDrop(botDrop());
+deco(()=>{for(let i=0;i<20;i++)pushDrop(botDrop())})();
 $$('#tktrack .tk').forEach(t=>t.classList.remove('in'));
-(function tick(){setTimeout(()=>{pushDrop(botDrop());tick()},ri(1600,3400))})();
+(function tick(){setTimeout(deco(()=>{pushDrop(botDrop());tick()}),deco(ri)(1600,3400))})();
 
 /* ---------- chat ---------- */
 const LINES=['gg on that 12x crash','just pulled Poisoned Horns from the Vault','who wants a 2v2 royal battle','upgrader took my Redvalk again','crazy mode is so fun, lowest wins','mines with 3 is my comfort zone','towers expert is actual pain','dice over 50 all day','blackjack dealer keeps hitting 21','daily case gave me a Party Fedora','finally climbed all 8 floors','roulette green twice in a row??','new profile banner looks clean','anyone else saving for Empire Reserve','cash out early, trust me','shared mode battles are chill'];
@@ -422,8 +430,8 @@ function addChat(m){
   d.innerHTML=`<div class="msg-h">${m.sys?`<span class="avt" style="--h:220;--s:22px"><b>T</b></span>`:avatar(u,22)}<b ${m.sys?'':`data-user="${esc(u.name)}"`}>${esc(u.name)}</b>${m.sys?'':`<span class="lv${u.lvl>=30?' g':''}">${u.lvl}</span>`}<time>${clock()}</time></div><p>${esc(m.text)}</p>`;
   l.appendChild(d);while(l.children.length>60)l.firstChild.remove();l.scrollTop=l.scrollHeight;
 }
-for(let i=0;i<7;i++)addChat({name:pick(NAMES),text:pick(LINES)});
-(function loop(){setTimeout(()=>{addChat({name:pick(NAMES),text:pick(LINES)});$('#online').textContent=fmt0(1200+ri(0,180));loop()},ri(4000,9000))})();
+deco(()=>{for(let i=0;i<7;i++)addChat({name:pick(NAMES),text:pick(LINES)})})();
+(function loop(){setTimeout(deco(()=>{addChat({name:pick(NAMES),text:pick(LINES)});$('#online').textContent=fmt0(1200+ri(0,180));loop()}),deco(ri)(4000,9000))})();
 $('#cform').onsubmit=e=>{e.preventDefault();if(!S.user){openLogin();return}const v=$('#cin').value.trim();if(!v)return;addChat({u:me(),text:v,me:1});$('#cin').value=''};
 $('#chatbtn').onclick=()=>{const a=$('#app');innerWidth<=1240?a.classList.toggle('chat-open'):a.classList.toggle('nochat')};
 $('#chatx').onclick=()=>$('#app').classList.remove('chat-open');

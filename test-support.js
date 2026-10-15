@@ -41,7 +41,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
   assert.equal(te.standing.level, 'warning'); assert.equal(te.standing.totals.warnings, 2); assert.equal(te.standing.activeCount, 1); assert.equal(te.siteWallet.deposited, 500); ok('the Trade Empire save is read: Rodux, value, items, TradePlus and every warning');
 
   await new Promise(r => server.listen(0, r)); base = `http://127.0.0.1:${server.address().port}`;
-  for (const id of [1, 2, 3, 4]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version) VALUES (?, ?, ?, '2026-10-15')").run(id, 'U' + id, id); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
+  for (const id of [1, 2, 3, 4]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version) VALUES (?, ?, ?, '2026-10-15.2')").run(id, 'U' + id, id); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
 
   /* ---------- screenshots ---------- */
   let r = await up(2, Buffer.from('<script>alert(1)</script>'.repeat(4))); assert.equal(r.status, 415); ok('only real images can be uploaded');
@@ -82,7 +82,7 @@ const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a
   r = await call(3, '/api/support', { category: 'appeal', subject: 'Appeal please', body: 'I did not scam anyone, here is proof.' }); assert.equal(r.status, 200); ok('a terminated player can still appeal through Support');
   r = await call(1, '/api/admin/mod', { robloxId: 3, action: 'unban', reason: 'Appeal accepted' }); r = await call(3, '/api/account'); assert.equal(r.body.tradeBlacket.banned, null); assert.notEqual(r.body.tradeBlacket.standing.level, 'terminated'); ok('unban lifts it and the lifted ban stops counting');
   r = await call(1, '/api/admin/mod', { robloxId: 4, action: 'kick' }); r = await call(4, '/api/me'); assert.equal(r.status, 401); ok('kick signs a player out');
-  r = await call(1, '/api/admin/mod', { robloxId: 1, action: 'ban', reason: 'test' }); assert.equal(r.status, 400); ok('admins cannot be moderated');
+  r = await call(1, '/api/admin/mod', { robloxId: 1, action: 'ban', reason: 'test' }); assert.equal(r.status, 403); ok('staff cannot moderate their own account');
   r = await call(1, '/api/admin/mod', { robloxId: 2, action: 'grant' }); r = await call(2, '/api/me'); assert.equal(r.body.site.access, true);
   r = await call(1, '/api/admin/mod', { robloxId: 2, action: 'revoke' }); r = await call(2, '/api/me'); assert.equal(r.body.site.access, false); ok('staff let players in and take access away');
   r = await call(1, '/api/admin/account?who=U2'); assert.equal(r.body.robloxId, 2); assert.ok(r.body.tradeBlacket.actions.some(a => a.action === 'note')); r = await call(2, '/api/admin/account?who=U2'); assert.equal(r.status, 403); ok('staff can look up any account');

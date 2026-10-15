@@ -6,84 +6,123 @@
    The page mirrors them so it can explain a refusal before the server has to.
    Preview: the same rules run in the browser.
    ========================================================= */
-const LEGAL_V={tos:'2026-10-15',cds:'2026-10-14'};
-const UPDATED='October 15, 2026';
+const LEGAL_V={tos:LEGAL_DOCS.tos.v,cds:LEGAL_DOCS.cds.v,business:LEGAL_DOCS.business.v};
+const DOCS=LEGAL_DOCS;
+const LEG_ORDER=LEGAL_DOCS.order;
+const PACKS={site:{t:'TradeBlacket agreements',lead:'Read each document, then sign once with your name and a drawn signature. You need to do this before you can play.'},cds:{t:'Currency Deduction Service',lead:'Deposits take Rodux and items from your Trade Empire save. Read how that works and sign before your first deposit.'},business:{t:'Business and Partner Program Agreement',lead:'This covers your membership, the Partner Program, your Monthly Wage of TradeBlacket and your Business Card. Read it and sign to continue.'}};
 
 /* ---------- the documents ---------- */
-// Plain-language drafts. Have them reviewed by a lawyer before relying on them.
-const DOCS={
-tos:{t:'Terms of Service',s:'The rules for using TradeBlacket.',b:[
-['Who we are','TradeBlacket is a fan-run website for players of the Roblox experience Trade Empire. It is run by the team behind Trade Empire. It is not made, endorsed or sponsored by Roblox Corporation. "We" and "us" mean the TradeBlacket team; "you" means anyone who uses the site.'],
-['Age','You must be 18 or older to use TradeBlacket. By signing up, and by accepting these terms, you confirm you are. If we learn an account belongs to someone younger, we close it and return what we can to their Trade Empire save.'],
-['Your account','You sign in by proving you own a Roblox account through a phrase in its About text. One TradeBlacket account per person and per Roblox account. You are responsible for everything done on your account. Do not share it or let anyone else play on it.'],
-['One account per player','Each player may have one TradeBlacket account. To enforce this we keep one-way hashes of the network address, a device id stored in your browser, and your device\'s hardware and browser traits each time you sign in; we never store the address or traits themselves. A new account that signs up from a network, device or hardware another account already uses is banned, and if two accounts are used on one device the newer one is banned. Sign-in attempts are rate limited. A banned account can still sign in and bring its own Rodux and limiteds back to Trade Empire, and nothing else. If you think a ban is a mistake, for example because you share a home network, open a Support ticket.'],
-['Refer a friend','You can invite friends with your referral link. When a friend signs up with it and is let into TradeBlacket, you get 450 bonus Rodux. Bonus Rodux can be played on TradeBlacket but cannot be withdrawn to Trade Empire. Nothing is paid for a friend on your network, device or hardware, for an account that is banned, or while either of you is banned. We may change or end the programme, and take back rewards gained by breaking these terms.'],
-['Rodux and limiteds have no real-world value','Rodux and Trade Empire limiteds are virtual items inside a game. They are not money, cannot be bought on TradeBlacket, and can never be exchanged for real money, cryptocurrency, Robux or anything of value outside Trade Empire. We never sell Rodux or items and never pay anything out other than Rodux and items back to your Trade Empire save. Buying, selling or trading Rodux, items or accounts for real money or anything outside the game is banned, and accounts involved are closed.'],
-['Deposits and withdrawals','Rodux and limiteds move between your Trade Empire save and TradeBlacket only through the Wallet on this site, while you are out of the game. How that works, and what we may and may not do to your save, is set out in the Trade Empire Currency Deduction Service, which forms part of these terms. You can withdraw Rodux up to the amount you have deposited. Bonus Rodux from rewards, codes, levels and rakeback has to be wagered once before it can be withdrawn. Items you hold on TradeBlacket can always be withdrawn to your save unless they are in an open coinflip.'],
-['Games and fairness','Each game shows its return to player. Results come from a cryptographic random number generator and do not depend on your history or bet size. Limited Flips are between two players: the site never takes a share and never adds or removes items. A result, once settled, is final unless it came from an error or abuse, in which case we may reverse it.'],
-['Playing responsibly','You can set screen-time, deposit, bet and loss limits, take a break or exclude yourself under Responsible play. Stricter limits start straight away; looser ones wait 24 hours. Breaks and exclusions cannot be ended early. Withdrawals always stay open. If playing stops being fun, please take a break and talk to someone you trust.'],
-['What is not allowed','Using more than one account, bots, scripts or automation; exploiting bugs instead of reporting them; scamming, begging, harassment or hate in chat; impersonating staff; trying to get around limits, holds or bans; and anything that breaks Roblox\'s Terms of Use or Community Standards.'],
-['If something goes wrong','If a bug or outage credits you with Rodux or items you should not have, we may remove them. If one costs you Rodux or items, tell us and we will restore them where our records show the loss. We may suspend or close an account that breaks these terms; when we do, we return whatever we safely can to the linked Trade Empire save, unless it came from abuse.'],
-['Disclaimers','TradeBlacket is provided as it is and as available. We do our best to keep it running and correct, but we do not promise it will always be available or free of errors. To the extent the law allows, we are not liable for indirect losses or for the loss of virtual items beyond restoring them as described above.'],
-['Changes','We may update these terms. When we do, we change the date at the top and ask you to accept the new version before you play again.'],
-['Contact','Questions or problems: reach the team through the Trade Empire community or Roblox group.']]},
-license:{t:'License Agreement',s:'What you may do with the site, its software and the items on it.',b:[
-['The license we give you','We give you a personal, limited, non-exclusive, non-transferable and revocable license to use TradeBlacket for your own entertainment, under the Terms of Service. Everything not expressly licensed here is kept by us.'],
-['Who owns what','The TradeBlacket name, logo, design, code, artwork and text belong to the TradeBlacket team and its licensors. Trade Empire, its items and Rodux belong to the owners of Trade Empire. Roblox and related marks belong to Roblox Corporation.'],
-['Virtual items are licensed, not sold','Rodux and Trade Empire limiteds are a license to use virtual items within Trade Empire and TradeBlacket. You do not own them as property, they have no monetary value, and the license ends if your account is closed for breaking the terms.'],
-['What you may not do','Copy, resell, rent or sublicense the site or any part of it; reverse engineer, decompile or try to extract its source code or seeds except to verify results as we describe; scrape it or access it by automated means; interfere with its security or other players; or use it for any commercial purpose.'],
-['What you post','You keep rights in what you write in chat or your profile. You give us a free, worldwide license to host and show it on TradeBlacket, and to remove it if it breaks the rules.'],
-['Ending the license','You can stop using TradeBlacket at any time and withdraw what you hold. We may end this license if you break it or the Terms of Service. The sections on ownership, virtual items and disclaimers continue after it ends.']]},
-cds:{t:'Trade Empire Currency Deduction Service',s:'How deposits take Rodux and limiteds from your Trade Empire save, and how withdrawals put them back.',b:[
-['What this service is','When you deposit, TradeBlacket deducts Rodux or limiteds from your Trade Empire save and adds the same amount to your TradeBlacket account. When you withdraw, it does the reverse. This document is your permission for those deductions and additions, and it sets out the limits we keep to.'],
-['How it reaches your save','The TradeBlacket server reads and writes your Trade Empire save through Roblox Open Cloud, the official Roblox service for experience data. It only touches the save of the Roblox account you signed in with, and only the Rodux balance, the items you choose, and the records needed to keep transfers safe. Nothing else in your save is changed.'],
-['Only what you ask for','Each deduction happens because you pressed Deposit for a specific amount or specific items. We never deduct on our own, never take more than you chose, and never change your save for any other reason.'],
-['You must be out of the game','Trade Empire keeps your save open while you play, so transfers only run while you are out of the game. If you are in a server, the Wallet tells you to leave first. If you have game mail waiting, such as a market sale, join Trade Empire once to collect it before moving items.'],
-['Items that cannot move','Items still in Trade Empire\'s 3-day holding period, items listed on the Trade Empire market, and items in an open trade stay in the game until they are free. An item you withdraw to Trade Empire starts a new holding period there.'],
-['Safe transfers','Every transfer is written to your save only if the save has not changed since we read it, and is stamped with a reference so it can never be applied twice. If anything fails part-way, the transfer is finished or undone automatically, and nothing is lost or duplicated. Item supply is fixed: the site never creates or destroys an item.'],
-['Withdrawals','You can withdraw Rodux up to what you have deposited and items you hold on TradeBlacket, at any time, including during a break or self-exclusion. Withdrawals are never subject to your limits.'],
-['Your limits apply','Daily deposit caps and item deposit caps you set under Responsible play are checked before every deduction.'],
-['Records','We keep a record of every transfer: what moved, when, and its reference. You can see recent transfers in your Wallet. Tell us about anything you do not recognise.'],
-['Withdrawing permission','You can stop using this service at any time by not depositing. To have your TradeBlacket account closed, withdraw everything first and contact us.']]}
-};
-const LEG_ORDER=['tos','license','cds'];
-const docHtml=k=>{const d=DOCS[k];return`<div class="legal"><p class="note">Last updated ${UPDATED}</p>${d.b.map(([h,p],i)=>`<h4>${i+1}. ${esc(h)}</h4><p>${esc(p)}</p>`).join('')}</div>`};
+// Paragraphs are separated by blank lines; lines starting "- " are list items.
+const legalPara=p=>p.split('\n\n').map(par=>{const L=par.split('\n');return L.every(l=>l.startsWith('- '))?`<ul>${L.map(l=>`<li>${esc(l.slice(2))}</li>`).join('')}</ul>`:L.some(l=>l.startsWith('- '))?L.map(l=>l.startsWith('- ')?`<ul><li>${esc(l.slice(2))}</li></ul>`:`<p>${esc(l)}</p>`).join(''):`<p>${L.map(esc).join('<br>')}</p>`}).join('');
+const docHtml=k=>{const d=DOCS[k];return`<div class="legal"><p class="note">Version ${esc(d.v)} · last updated ${esc(d.updated)}</p>${d.b.map(([h,p],i)=>`<h4 id="lg-${k}-${i+1}">${i+1}. ${esc(h)}</h4>${legalPara(p)}`).join('')}</div>`};
 PAGES.legal=(el,doc)=>{
-  const k=DOCS[doc]?doc:'tos';
-  el.innerHTML=`<div class="page-h"><div><div class="crumb"><button data-go="home">Home</button> / Legal</div><h2>${DOCS[k].t}</h2><p>${DOCS[k].s}</p></div></div>
-  <div class="legal-wrap"><nav class="legal-nav">${LEG_ORDER.map(x=>`<button data-go="legal" data-p="${x}" class="${x===k?'on':''}">${DOCS[x].t}</button>`).join('')}<button data-go="settings">Responsible play</button></nav><article class="card">${docHtml(k)}</article></div>`;
+  const k=DOCS[doc]&&doc!=='order'&&doc!=='packs'&&doc!=='text'?doc:'tos';
+  const st=WAPI.live&&WAPI.me&&WAPI.me.legal;
+  el.innerHTML=`<div class="page-h"><div><div class="crumb"><button data-go="home">Home</button> / <button data-go="docs">Docs</button> / Legal</div><h2>${esc(DOCS[k].t)}</h2><p>${esc(DOCS[k].s)}</p></div></div>
+  <div class="legal-wrap"><nav class="legal-nav">${LEG_ORDER.map(x=>`<button data-go="legal" data-p="${x}" class="${x===k?'on':''}">${esc(DOCS[x].t)}</button>`).join('')}<button data-go="settings">Responsible play</button></nav>
+  <article class="card">${st?`<p class="lg-state ${signedNow(k)?'is-ok':''}">${signedNow(k)?'You have signed this version.':'You have not signed this version yet.'}${S.user?' <button class="lnk" data-go="prefs">Your signed agreements</button>':''}</p>`:''}${docHtml(k)}</article></div>`;
 };
+const packOfDoc=k=>Object.keys(DOCS.packs).find(p=>DOCS.packs[p].includes(k));
+const signedNow=k=>{const p=packOfDoc(k);return p==='site'?accepted('tos'):accepted(p)};
 document.addEventListener('click',e=>{const b=e.target.closest('[data-legal]');if(!b)return;e.preventDefault();const k=b.dataset.legal;
-  if($('#gate').innerHTML||$('#modal').innerHTML)modal(`<h3>${DOCS[k].t}</h3>${docHtml(k)}`,{cls:'mid'});else go('legal',k)});
+  if($('#gate').innerHTML||$('#modal').innerHTML||$('#signgate'))modal(`<h3>${esc(DOCS[k].t)}</h3>${docHtml(k)}`,{cls:'mid'});else go('legal',k)});
 
-/* ---------- acceptance ---------- */
+/* ---------- signing ---------- */
 const accepted=k=>WAPI.live&&WAPI.me?!!(WAPI.me.legal&&WAPI.me.legal[k]):(S.legal||{})[k]===LEGAL_V[k];
-async function accept(k){
-  if(WAPI.live){const r=await api('/api/legal/accept',{doc:k,version:LEGAL_V[k]});if(!r.ok){toast(r.j.error||'Could not save that. Try again.','loss');return false}await syncMe()}
-  S.legal={...(S.legal||{}),[k]:LEGAL_V[k]};save();return true;
+// The scribble pad: draw with a mouse, trackpad, pen or finger. Returns {el, data(), clear()}.
+function scribble(host){
+  host.innerHTML=`<div class="sg-pad"><canvas aria-label="Signature pad: draw your signature" role="img"></canvas><span class="sg-x">✕</span><span class="sg-line"></span><span class="sg-hint">Sign here</span><button type="button" class="sg-clear">Clear</button></div>`;
+  const pad=$('.sg-pad',host),cv=$('canvas',host),ctx=cv.getContext('2d');let W=0,H=0,dpr=1,strokes=0,ink=0,last=null,lastW=2.4,drawing=false,onchange=()=>{};
+  const size=()=>{const r=cv.getBoundingClientRect();dpr=Math.min(3,devicePixelRatio||1);const img=strokes?cv.toDataURL():null;W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#14213D';if(img){const i=new Image();i.onload=()=>ctx.drawImage(i,0,0,W,H);i.src=img}};
+  const pt=e=>{const r=cv.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top,t:performance.now(),p:e.pressure&&e.pointerType==='pen'?e.pressure:.5}};
+  cv.addEventListener('pointerdown',e=>{e.preventDefault();cv.setPointerCapture(e.pointerId);drawing=true;last=pt(e);lastW=2.4;strokes++;pad.classList.add('inked');ctx.beginPath();ctx.arc(last.x,last.y,1.2,0,7);ctx.fillStyle='#14213D';ctx.fill();onchange()});
+  cv.addEventListener('pointermove',e=>{if(!drawing)return;e.preventDefault();const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];for(const ev of evs){const p=pt(ev),dx=p.x-last.x,dy=p.y-last.y,d=Math.hypot(dx,dy);if(d<.8)continue;
+    const v=d/Math.max(1,p.t-last.t),w=Math.max(1.1,Math.min(3.6,(3.4-v*1.1)*(.6+p.p)));lastW=lastW*.6+w*.4;
+    ctx.lineWidth=lastW;ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.quadraticCurveTo(last.x,last.y,(last.x+p.x)/2,(last.y+p.y)/2);ctx.lineTo(p.x,p.y);ctx.stroke();ink+=d;last=p}onchange()});
+  const end=()=>{drawing=false;last=null};cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);cv.addEventListener('lostpointercapture',end);
+  const clear=()=>{ctx.clearRect(0,0,W,H);strokes=0;ink=0;pad.classList.remove('inked');onchange()};
+  $('.sg-clear',host).onclick=clear;
+  requestAnimationFrame(size);const ro=new ResizeObserver(()=>{if(Math.abs(cv.getBoundingClientRect().width-W)>2)size()});ro.observe(cv);
+  // Export: the strokes on a transparent background, at most 600 px wide.
+  const data=()=>{const sc=Math.min(1,600/W),o=document.createElement('canvas');o.width=Math.max(200,Math.round(W*sc));o.height=Math.max(60,Math.round(H*sc));o.getContext('2d').drawImage(cv,0,0,o.width,o.height);return{signature:o.toDataURL('image/png'),strokes,ink:Math.round(ink)}};
+  return{data,clear,get ink(){return ink},get strokes(){return strokes},set onchange(f){onchange=f}};
 }
-function acceptModal(k,docs,lead,age){
+// The signing sheet for a pack. Resolves true once signed.
+function signSheet(pack,{blocking=false}={}){
   return new Promise(res=>{
-    let done=false;
-    const m=modal(`<span class="eyebrow">Please read</span><h3>${docs.map(d=>DOCS[d].t).join(' and ')}</h3><p>${lead}</p>
-      <div class="legal-box">${docs.map(d=>`<h5>${DOCS[d].t}</h5>${docHtml(d)}`).join('')}</div>
-      ${age?'<label class="check" style="margin:14px 0 0"><input type="checkbox" id="lga"> I am 18 or older.</label>':''}<label class="check" style="margin:14px 0"><input type="checkbox" id="lgk"> I have read and agree to the ${docs.map(d=>DOCS[d].t).join(' and the ')}.</label>
-      <div class="err" id="lge"></div><button class="cta" id="lgo" disabled>Agree and continue</button>`,{cls:'mid',onClose:()=>{if(!done)res(false)}});
-    const R=m.root,chk=()=>{$('#lgo',R).disabled=!$('#lgk',R).checked||(age&&!$('#lga',R).checked)};$('#lgk',R).onchange=chk;if(age)$('#lga',R).onchange=chk;
-    $('#lgo',R).onclick=async()=>{$('#lgo',R).disabled=true;for(const x of k)if(!(await accept(x))){$('#lgo',R).disabled=false;return}done=true;m.close();res(true)};
+    const P=PACKS[pack],list=DOCS.packs[pack],read=new Set();let idx=0,pad=null,done=false;
+    const el=document.createElement('div');el.id='signgate';el.className='sg';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-label',P.t);
+    const today=new Date().toLocaleDateString(undefined,{day:'numeric',month:'long',year:'numeric'});
+    el.innerHTML=`<div class="sg-sheet"><header class="sg-h"><div><p class="sg-eyebrow">Electronic signature</p><h2>${esc(P.t)}</h2><p>${esc(P.lead)}</p></div>${blocking?'':'<button class="ib sg-close" aria-label="Close">'+ic('x',18,2)+'</button>'}</header>
+      <div class="sg-body"><nav class="sg-docs">${list.map((k,i)=>`<button data-sgd="${i}"><i></i><span>${esc(DOCS[k].t)}</span></button>`).join('')}</nav>
+        <div class="sg-read"><div class="sg-doc" tabindex="0"></div><div class="sg-more"><span>Scroll to the end of each document</span><button class="cta ghost inline" id="sg-next">Next document</button></div></div></div>
+      <footer class="sg-f"><div class="sg-who"><label class="fld"><span>Full name</span><input class="txt" id="sg-name" maxlength="60" autocomplete="name" placeholder="As you want it on the agreement" value="${esc(S.user?'':'')}"></label><p class="sg-meta">Signing as <b>${esc(S.user?S.user.name:'')}</b> on ${esc(today)}</p></div>
+        <div class="sg-padwrap" id="sg-pad"></div>
+        <div class="sg-go"><label class="check"><input type="checkbox" id="sg-ok"> I have read ${list.length>1?'these documents':'this document'}, I agree to ${list.length>1?'them':'it'}, and I am 18 or older. My electronic signature is as binding as my handwritten one.</label><div class="err" id="sg-e"></div><button class="cta" id="sg-sign" disabled>Sign ${list.length>1?'all '+list.length+' documents':'agreement'}</button></div></footer></div>`;
+    document.body.appendChild(el);document.body.classList.add('sg-on');
+    const R=el,docBox=$('.sg-doc',R);
+    const close=ok=>{if(done)return;done=true;el.remove();document.body.classList.remove('sg-on');res(ok)};
+    if(!blocking){$('.sg-close',R).onclick=()=>close(false);el.addEventListener('keydown',e=>{if(e.key==='Escape')close(false)})}
+    const check=()=>{$('#sg-sign',R).disabled=!(read.size===list.length&&$('#sg-name',R).value.trim().length>=2&&pad&&pad.ink>=80&&$('#sg-ok',R).checked)};
+    const markRead=()=>{if(docBox.scrollTop+docBox.clientHeight>=docBox.scrollHeight-24){read.add(idx);drawNav();check()}};
+    const drawNav=()=>{$$('[data-sgd]',R).forEach(b=>{const i=+b.dataset.sgd;b.classList.toggle('on',i===idx);b.classList.toggle('read',read.has(i))});
+      const nx=$('#sg-next',R);nx.hidden=idx>=list.length-1;$('.sg-more span',R).textContent=read.size===list.length?'All read. Sign below.':`${read.size} of ${list.length} read. Scroll to the end of each document.`};
+    const show=i=>{idx=i;docBox.innerHTML=docHtml(list[i]);docBox.scrollTop=0;drawNav();setTimeout(markRead,60)};
+    docBox.addEventListener('scroll',markRead);
+    $$('[data-sgd]',R).forEach(b=>b.onclick=()=>show(+b.dataset.sgd));
+    $('#sg-next',R).onclick=()=>show(Math.min(list.length-1,idx+1));
+    pad=scribble($('#sg-pad',R));pad.onchange=check;$('#sg-name',R).oninput=check;$('#sg-ok',R).onchange=check;
+    show(0);
+    $('#sg-sign',R).onclick=async()=>{
+      const btn=$('#sg-sign',R),e=$('#sg-e',R);e.textContent='';btn.disabled=true;btn.innerHTML='<div class="spin sm"></div>Signing';
+      const d=pad.data(),body={docs:list,name:$('#sg-name',R).value.trim(),...d,versions:Object.fromEntries(list.map(k=>[k,DOCS[k].v]))};
+      if(WAPI.live){const r=await api('/api/legal/sign',body);if(!r.ok){e.textContent=r.j.error||'Could not sign. Try again.';btn.innerHTML=`Sign ${list.length>1?'all '+list.length+' documents':'agreement'}`;check();return}await syncMe()}
+      const keys=pack==='site'?['tos']:[pack];S.legal={...(S.legal||{})};keys.forEach(k=>S.legal[k]=LEGAL_V[k]);
+      S.signatures=[{pack,name:body.name,at:Date.now(),img:d.signature},...(S.signatures||[])].slice(0,10);save();
+      $('.sg-sheet',R).innerHTML=`<div class="sg-done">${ic('check',30,2.4)}<h2>Signed</h2><p>${list.length>1?`All ${list.length} documents are signed.`:'The agreement is signed.'} You can see and download your signed copies in Settings.</p></div>`;
+      setTimeout(()=>close(true),1300);
+    };
   });
 }
-// Called before any deposit. Resolves true once the Deduction Service is accepted.
-async function needCds(){
-  if(accepted('cds'))return true;
-  return acceptModal(['cds'],['cds'],`Deposits take Rodux and items from your ${TE.name} save. Please read how that works before your first deposit.`);
-}
+// Called before any deposit. Resolves true once the Deduction Service is signed.
+async function needCds(){if(accepted('cds'))return true;return signSheet('cds')}
 let tosAsked=false;
 async function needTos(){
-  if(!S.user||accepted('tos')||tosAsked)return true;
-  tosAsked=true;const ok=await acceptModal(['tos'],['tos','license'],'TradeBlacket is now for players aged 18 and over. Please confirm your age and accept the updated terms to keep playing. If you are under 18 you can still withdraw everything you hold.',true);
-  tosAsked=false;return ok;
+  if(!S.user||accepted('tos')||tosAsked||$('#signgate'))return true;
+  tosAsked=true;const ok=await signSheet('site',{blocking:WAPI.live});tosAsked=false;return ok;
 }
+// Signed in but the current agreements are not signed: ask straight away (live site).
+function legalGate(){if(WAPI.live&&WAPI.me&&WAPI.me.legal&&!WAPI.me.legal.tos&&!$('#signgate')&&!(typeof swAway==='function'&&swAway()))needTos()}
+WAPI.ready.then(()=>setTimeout(legalGate,400));setInterval(legalGate,5000);
+
+/* ---------- your signed agreements (Settings) ---------- */
+async function sigRecord(id){
+  const r=await api('/api/legal/record/'+id);if(!r.ok)return toast(r.j.error,'loss');const s=r.j;
+  const m=modal(`<span class="eyebrow">Signed agreement</span><h3>${esc(s.title)}</h3><div class="sg-paper"><img src="/api/legal/signature/${esc(s.id)}.png" alt="Drawn signature of ${esc(s.name)}"><div><b>${esc(s.name)}</b><span>${new Date(s.signedAt).toLocaleString()}</span></div></div>
+    <dl class="sg-kv"><div><dt>Reference</dt><dd>${esc(s.id)}</dd></div><div><dt>Version</dt><dd>${esc(s.version)}</dd></div><div><dt>Document fingerprint (SHA-256)</dt><dd><code>${esc(s.docHash)}</code></dd></div><div><dt>Signature fingerprint</dt><dd><code>${esc(s.signatureHash)}</code></dd></div></dl>
+    ${s.text?`<div class="legal-box">${docHtml(s.doc)}</div>`:'<p class="note">This version has since been replaced. The fingerprint above identifies the exact text you signed.</p>'}<button class="cta" id="sgdl">${ic('download',16,2)}Download a copy</button>`,{cls:'mid'});
+  $('#sgdl',m.root).onclick=async()=>{const blob=await fetch('/api/legal/signature/'+s.id+'.png').then(r=>r.blob()),img=await new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(blob)});
+    const html=`<!doctype html><meta charset="utf-8"><title>${esc(s.title)} – signed ${esc(s.id)}</title><style>body{font:15px/1.6 Georgia,serif;max-width:720px;margin:40px auto;padding:0 20px;color:#111}h1{font-size:24px}h4{margin:18px 0 4px}code{font-size:12px;word-break:break-all}.sig{border-top:1px solid #999;margin-top:32px;padding-top:12px}</style><h1>${esc(s.title)}</h1><p>Version ${esc(s.version)}</p>${docHtml(s.doc).replace(/<p class="note">.*?<\/p>/,'')}<div class="sig"><img src="${img}" style="height:80px"><p><b>${esc(s.name)}</b> (Roblox account ${esc(S.user?S.user.name:'')}) signed electronically on ${new Date(s.signedAt).toUTCString()}.</p><p>Reference ${esc(s.id)}<br>Document SHA-256 <code>${esc(s.docHash)}</code><br>Signature SHA-256 <code>${esc(s.signatureHash)}</code></p></div>`;
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));a.download=`TradeBlacket-${s.doc}-${s.id}.html`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)};
+}
+async function sigSection(el){
+  const box=$('.st2',el);if(!box||!S.user)return;
+  let rows=[];if(WAPI.live){const r=await api('/api/legal');if(!r.ok||!el.isConnected)return;rows=r.j.signatures}
+  else rows=(S.signatures||[]).map((x,i)=>({id:'',title:PACKS[x.pack].t,name:x.name,signedAt:x.at,current:true,pack:x.pack}));
+  const need=['site','cds',...(WAPI.me&&WAPI.me.business?['business']:[])].filter(p=>!(p==='site'?accepted('tos'):accepted(p)));
+  box.insertAdjacentHTML('beforeend',`<section class="card glass st2-sec sg-sec"><h3>Signed agreements</h3><p class="note">Every document you signed, with the exact version and its fingerprint. Open one to see your signature or download a copy.</p>
+    ${need.length?`<div class="sg-need">${need.map(p=>`<button class="cta ghost inline" data-sgp="${p}">Sign the ${esc(PACKS[p].t)}</button>`).join('')}</div>`:''}
+    ${rows.length?`<div class="sg-list">${rows.map(s=>`<button class="sg-row" ${s.id?`data-sig="${esc(s.id)}"`:''}><span><b>${esc(s.title)}</b><small>Signed by ${esc(s.name)} · ${new Date(s.signedAt).toLocaleDateString()}${s.version?' · version '+esc(s.version):''}</small></span><i class="ac-pill ${s.current?'is-ok':''}">${s.current?'Current':'Replaced'}</i></button>`).join('')}</div>`:'<p class="note">Nothing signed yet.</p>'}</section>`);
+  $$('[data-sig]',box).forEach(b=>b.onclick=()=>sigRecord(b.dataset.sig));
+  $$('[data-sgp]',box).forEach(b=>b.onclick=async()=>{if(await signSheet(b.dataset.sgp))go('prefs')});
+}
+
+/* ---------- cookie notice ---------- */
+(function(){let seen=false;try{seen=localStorage.getItem('tb_cookie_ok')==='1'}catch{}if(seen)return;
+  const b=document.createElement('div');b.className='ck';b.setAttribute('role','region');b.setAttribute('aria-label','Cookies');
+  b.innerHTML=`<p>TradeBlacket only uses cookies it needs to keep you signed in and protect accounts. No ads, no tracking.</p><div><button class="lnk" data-legal="cookies">Cookie Policy</button><button class="cta inline" id="ckok">OK</button></div>`;
+  document.body.appendChild(b);$('#ckok',b).onclick=()=>{try{localStorage.setItem('tb_cookie_ok','1')}catch{}b.remove()};
+})();
 
 /* ---------- limits ---------- */
 const DAYMS=864e5,dayKey=t=>new Date(t).toISOString().slice(0,10),nextMidnight=()=>Date.parse(dayKey(Date.now())+'T00:00:00Z')+DAYMS;

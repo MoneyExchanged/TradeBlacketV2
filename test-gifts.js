@@ -18,7 +18,7 @@ let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
   assert.equal(Math.round(median(P.map(p => p.perRobux)) * 100) / 100, 143.27); ok('the rate is the median pack, so neither the starter pack nor the bargain pack decides it');
 
   await new Promise(r => server.listen(0, r)); base = `http://127.0.0.1:${server.address().port}`;
-  for (const id of [1, 2, 3, 4]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version) VALUES (?, ?, 0, '2026-10-15')").run(id, 'U' + id); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
+  for (const id of [1, 2, 3, 4]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version) VALUES (?, ?, 0, '2026-10-15.2')").run(id, 'U' + id); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
   db.prepare("INSERT INTO site_access VALUES (2, 'code', 0)").run(); db.prepare("INSERT INTO site_access VALUES (3, 'code', 0)").run();
   let r = await call(null, '/api/rates'); const perUsd = r.body.roduxPerUsd; assert.ok(perUsd > 1000); assert.equal(r.body.robuxPerUsd, 80);
   assert.equal(r.body.values.find(v => v.usd === 10).rodux, Math.round(10 * perUsd)); ok('anyone can see what a dollar is worth in Rodux');

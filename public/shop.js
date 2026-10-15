@@ -131,7 +131,7 @@ function botBattle(){
 }
 const seedLobby=()=>{while(BT.list.length<8)BT.list.push(botBattle())};
 seedLobby();
-setInterval(()=>{
+setInterval(deco(()=>{
   let ch=false;
   BT.list.forEach(b=>{
     if(b.id===BT.viewing||(b.mine&&b.status!=='done'))return;
@@ -140,7 +140,7 @@ setInterval(()=>{
     else if(b.status==='done'&&Date.now()-b.ended>9000){b.gone=1;ch=true}
   });
   if(ch){BT.list=BT.list.filter(b=>!b.gone);seedLobby();refreshLobby()}
-},1500);
+}),1500);
 function caseStrip(b,max=6){
   const g=[];b.cases.forEach((id,i)=>{const last=g[g.length-1];if(last&&last.id===id)last.n++,last.to=i;else g.push({id,n:1,from:i,to:i})});
   return g.slice(0,max).map(x=>caseThumb(CASE[x.id],b.status==='rolling'&&b.round>=x.from&&b.round<=x.to?'now':b.status!=='waiting'&&b.round>x.to?'done':'',x.n)).join('')+(g.length>max?`<span class="note">+${g.length-max}</span>`:'');

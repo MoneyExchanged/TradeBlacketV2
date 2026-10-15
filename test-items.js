@@ -1,6 +1,7 @@
 // Limiteds, item coinflips and responsible-play limits against fake Roblox data stores.
 // Run: node test-items.js
 'use strict';
+const SIGN = require('./test-sign.js');
 const assert = require('node:assert/strict');
 const os = require('node:os'), path = require('node:path'), fs = require('node:fs');
 const dbPath = path.join(os.tmpdir(), `tb-items-${process.pid}.db`);
@@ -62,7 +63,7 @@ let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
   ok('reads the Trade Empire inventory with names, values and pictures');
   r = await call(11, '/api/items/deposit', { tokens: ['1048037:46'] }); assert.equal(r.status, 403); ok('item deposits need the Deduction Service accepted');
   const ver0 = (await call(11, '/api/me')).body.legal.versions;
-  for (const w of [11, 22]) { await call(w, '/api/legal/accept', { doc: 'tos', version: ver0.tos }); await call(w, '/api/legal/accept', { doc: 'cds', version: ver0.cds }); }
+  for (const w of [11, 22]) { await call(w, '/api/legal/accept', { doc: 'tos', version: ver0.tos, ...SIGN }); await call(w, '/api/legal/accept', { doc: 'cds', version: ver0.cds, ...SIGN }); }
 
   r = await call(11, '/api/items/deposit', { tokens: ['64082730:2531'] }); assert.equal(r.status, 400); assert.match(r.body.error, /holding period/); ok('items in their 3-day holding period stay in the game');
   put('MarketStore_v1', '1191125', { '197': { sellerId: 11, price: 5 } });

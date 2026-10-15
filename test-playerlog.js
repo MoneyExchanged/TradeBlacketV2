@@ -1,6 +1,7 @@
 // The staff player log (playerlog.js).
 // Run: node test-playerlog.js
 'use strict';
+const SIGN = require('./test-sign.js');
 const assert = require('node:assert/strict');
 const os = require('node:os'), path = require('node:path');
 process.env.GAME_WEBHOOK_SECRET = 'test-secret-0123456789abcdef';
@@ -14,7 +15,7 @@ const T = Date.now();
 
 (async () => {
   await new Promise(r => server.listen(0, r)); base = `http://127.0.0.1:${server.address().port}`;
-  for (const [id, name] of [[1, 'Owner'], [2, 'Alice'], [3, 'Bobby'], [4, 'Carla']]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version, balance) VALUES (?, ?, ?, '2026-10-15', 1000)").run(id, name, T - 10 * 864e5); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
+  for (const [id, name] of [[1, 'Owner'], [2, 'Alice'], [3, 'Bobby'], [4, 'Carla']]) { db.prepare("INSERT INTO users (roblox_id, username, created_at, tos_version, balance) VALUES (?, ?, ?, '2026-10-15.2', 1000)").run(id, name, T - 10 * 864e5); const t = String(id).repeat(64).slice(0, 64); db.prepare('INSERT INTO sessions VALUES (?, ?, 0)').run(t, id); jar[id] = 'tb_session=' + t; }
   db.prepare("INSERT INTO site_access VALUES (2, 'code', ?)").run(T); db.prepare("INSERT INTO site_access VALUES (3, 'code', ?)").run(T);
   // Rodux: one in-game deposit, two website deposits (one refused), one website withdrawal
   db.prepare("INSERT INTO transfers VALUES ('k1','deposit',2,500,'ok',200,'TBD-AAA',NULL,?)").run(T - 9 * 864e5);
@@ -28,7 +29,7 @@ const T = Date.now();
   let r = await call(2, '/api/items/list', { uid: 'u2', price: 400 }); assert.equal(r.status, 200, JSON.stringify(r.body));
   const lid = db.prepare('SELECT id FROM item_listings WHERE uid = ?').get('u2').id;
   r = await call(3, '/api/items/buy', { id: lid }); assert.equal(r.status, 200, JSON.stringify(r.body));
-  await call(2, '/api/legal/accept', { doc: 'tos', version: '2026-10-15' });
+  await call(2, '/api/legal/accept', { doc: 'tos', version: '2026-10-15.2', ...SIGN });
   await call(2, '/api/support', { category: 'deposit', subject: 'Late deposit', body: 'My 300 Rodux did not arrive.' });
   await call(1, '/api/admin/mod', { robloxId: 2, action: 'warn', reason: 'Spam' });
   await call(2, '/api/me', null, { 'x-real-ip': '7.7.7.7', 'x-tb-device': 'a'.repeat(32) + '.' + 'b'.repeat(32) });

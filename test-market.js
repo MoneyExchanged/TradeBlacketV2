@@ -1,6 +1,7 @@
 // Limiteds market, selling to TradeBlacket, profiles, support and wallet IDs.
 // Run: node test-market.js
 'use strict';
+const SIGN = require('./test-sign.js');
 const assert = require('node:assert/strict');
 const os = require('node:os'), path = require('node:path'), fs = require('node:fs');
 const dbPath = path.join(os.tmpdir(), `tb-market-${process.pid}.db`);
@@ -57,7 +58,7 @@ let n = 0; const ok = m => console.log(`  ✓ ${++n}. ${m}`);
   const total0 = copies().length + siteCopies().length;
 
   const v = (await call(11, '/api/me')).body.legal.versions;
-  for (const w of [11, 22]) { await call(w, '/api/legal/accept', { doc: 'tos', version: v.tos }); await call(w, '/api/legal/accept', { doc: 'cds', version: v.cds }); }
+  for (const w of [11, 22]) { await call(w, '/api/legal/accept', { doc: 'tos', version: v.tos, ...SIGN }); await call(w, '/api/legal/accept', { doc: 'cds', version: v.cds, ...SIGN }); }
   // Alice deposits the fedora (25,000,000) and Dominus Rex (3,700,000)
   let r = await call(11, '/api/items/deposit', { tokens: ['1048037:46', '1191125:197'] }); assert.equal(r.status, 200, JSON.stringify(r.body));
   let site = (await call(11, '/api/items/site')).body.items; const fed = site.find(i => i.itemId === 1048037), rex = site.find(i => i.itemId === 1191125);

@@ -24,7 +24,7 @@ const PLATFORMS = ['youtube', 'tiktok', 'twitch', 'x', 'discord', 'other'];
 const ACCENTS = ['gold', 'champagne', 'rose', 'platinum', 'emerald'];
 const B32 = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
 
-function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList, isBanned, note = () => {}, gifts, withdrawable = () => 0, origins = [] }) {
+function create({ db, tx, log = () => {}, isAdmin, can = () => true, signed = () => true, staffName = () => null, secret, rate, items, siteList, isBanned, note = () => {}, gifts, withdrawable = () => 0, origins = [] }) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS biz_members (roblox_id INTEGER PRIMARY KEY, status TEXT NOT NULL, form TEXT NOT NULL, applied_at INTEGER NOT NULL, decided_at INTEGER, decided_by INTEGER, note TEXT,
       tepp TEXT NOT NULL DEFAULT 'none', tepp_form TEXT, tepp_at INTEGER, tepp_decided_at INTEGER, tepp_note TEXT,
@@ -36,7 +36,7 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
   `);
   if (!db.prepare('PRAGMA table_info(gift_cards)').all().some(c => c.name === 'assigned_to')) db.exec('ALTER TABLE gift_cards ADD COLUMN assigned_to INTEGER');
   { const c = db.prepare('PRAGMA table_info(biz_members)').all().map(x => x.name);
-    for (const [col, def] of [['pay_source', "TEXT NOT NULL DEFAULT 'balance'"], ['pay_auth', "TEXT NOT NULL DEFAULT 'none'"], ['pin_hash', 'TEXT'], ['pin_fail', 'INTEGER NOT NULL DEFAULT 0'], ['pin_lock', 'INTEGER NOT NULL DEFAULT 0'], ['pk_id', 'TEXT'], ['pk_pub', 'TEXT'], ['pk_alg', 'INTEGER'], ['pk_count', 'INTEGER NOT NULL DEFAULT 0']])
+    for (const [col, def] of [['pay_source', "TEXT NOT NULL DEFAULT 'balance'"], ['pay_auth', "TEXT NOT NULL DEFAULT 'none'"], ['pin_hash', 'TEXT'], ['pin_fail', 'INTEGER NOT NULL DEFAULT 0'], ['pin_lock', 'INTEGER NOT NULL DEFAULT 0'], ['pk_id', 'TEXT'], ['pk_pub', 'TEXT'], ['pk_alg', 'INTEGER'], ['pk_count', 'INTEGER NOT NULL DEFAULT 0'], ['wage_amount', 'INTEGER NOT NULL DEFAULT 0'], ['wage_currency', "TEXT NOT NULL DEFAULT 'USD'"], ['wage_note', 'TEXT'], ['wage_set_by', 'INTEGER'], ['wage_set_at', 'INTEGER'], ['wage_next_at', 'INTEGER'], ['wage_paused', 'INTEGER NOT NULL DEFAULT 0'], ['wage_last_at', 'INTEGER']])
       if (!c.includes(col)) db.exec(`ALTER TABLE biz_members ADD COLUMN ${col} ${def}`); }
   const q = {
     get: db.prepare('SELECT * FROM biz_members WHERE roblox_id = ?'),
@@ -62,6 +62,9 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
     // what the browser adds to (or takes from) the play balance, once each
     payouts: db.prepare("SELECT CASE kind WHEN 'topup' THEN 'card-topup' ELSE 'deposit' END AS kind, rodux AS amount, 'ok' AS status, ref AS reference, CASE kind WHEN 'topup' THEN 'Moved to your Business Card' WHEN 'card-pay' THEN 'Paid with your Business Card' ELSE 'Business card payout' END AS reason, at AS created_at FROM biz_ledger WHERE roblox_id = ? AND kind IN ('withdraw-rodux','card-pay','topup') ORDER BY at DESC LIMIT 25"),
     user: db.prepare('SELECT * FROM users WHERE roblox_id = ?'),
+    setWage: db.prepare('UPDATE biz_members SET wage_amount = ?, wage_currency = ?, wage_note = ?, wage_set_by = ?, wage_set_at = ?, wage_next_at = ?, wage_paused = ? WHERE roblox_id = ?'),
+    wageDue: db.prepare("SELECT * FROM biz_members WHERE status = 'approved' AND tepp = 'approved' AND wage_amount > 0 AND wage_paused = 0 AND wage_next_at IS NOT NULL AND wage_next_at <= ?"),
+    wagePaid: db.prepare('UPDATE biz_members SET wage_next_at = ?, wage_last_at = ? WHERE roblox_id = ?'),
     takeSite: db.prepare('UPDATE users SET balance = balance - ?, deposited = MAX(withdrawn, deposited - ?) WHERE roblox_id = ?'),
     setPay: db.prepare('UPDATE biz_members SET pay_source = ? WHERE roblox_id = ?'),
     setAuth: db.prepare('UPDATE biz_members SET pay_auth = ?, pin_hash = COALESCE(?, pin_hash) WHERE roblox_id = ?'),
@@ -97,10 +100,54 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
       tepp: m.tepp, teppAt: m.tepp_at, teppNote: m.tepp_note, teppForm: parse(m.tepp_form, null),
       card, cardAt: m.card_at, balance: { usd: m.usd_cents / 100, rodux: m.rodux, roduxValue: m.rodux + Math.floor(m.usd_cents * perUsd() / 100) },
       youtube: { url: m.yt_url, phrase: m.yt_verified ? null : m.yt_phrase, verified: !!m.yt_verified },
+      agreement: { signed: signed(id, 'business') },
+      wage: wageView(m),
       ledger: q.ledger.all(id).map(l => ({ kind: l.kind, currency: l.currency, amount: l.currency === 'USD' ? l.amount / 100 : l.amount, rodux: l.rodux, note: l.note, ref: l.ref, items: parse(l.items, null), at: l.at })),
       codes: m.status === 'approved' ? q.codes.all(id).map(c => ({ code: c.code, usd: c.usd, status: c.status === 'active' && c.expires_at && c.expires_at < now() ? 'expired' : c.status, redeemedBy: c.redeemed_name, redeemedAt: c.redeemed_at })) : [],
       requests: m.status === 'approved' ? requests(id) : [],
     };
+  }
+
+  /* ---------- the Monthly Wage of TradeBlacket ---------- */
+  // Set by staff with the wage permission; paid once a month onto the card, only while the partner
+  // has signed the current Business and Partner Program Agreement.
+  const addMonth = t => { const d = new Date(t); const day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + 1); const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate(); d.setUTCDate(Math.min(day, last)); return d.getTime(); };
+  function wageView(m) {
+    if (!m.wage_amount) return null;
+    const usd = m.wage_currency === 'USD', by = m.wage_set_by ? staffName(m.wage_set_by) : null;
+    return { amount: usd ? m.wage_amount / 100 : m.wage_amount, currency: m.wage_currency, next: m.wage_paused ? null : m.wage_next_at, last: m.wage_last_at, paused: !!m.wage_paused, note: m.wage_note, setAt: m.wage_set_at, setBy: by, roduxValue: usd ? Math.floor(m.wage_amount * perUsd() / 100) : m.wage_amount, needsSignature: !signed(m.roblox_id, 'business') };
+  }
+  function setWage(admin, b) {
+    must(admin, 'biz.wage');
+    const id = Number(b.robloxId), m = partner(id); if (!m) throw new BizError('Wages go to Trade Empire Partners.');
+    const usd = String(b.currency || 'USD').toUpperCase() !== 'RODUX', amt = usd ? Math.round(Number(b.amount) * 100) : Math.floor(Number(b.amount));
+    if (!(amt >= 0) || amt > (usd ? 1e7 : 1e10)) throw new BizError(usd ? 'Enter a monthly wage in dollars (0 ends it).' : 'Enter a whole number of Rodux (0 ends it).');
+    const paused = b.paused ? 1 : 0, why = clean(b.note, 160) || null;
+    // first payment: on the chosen day, or now; a changed amount keeps the existing schedule
+    const start = b.start ? Date.parse(b.start) : NaN, next = amt === 0 ? null : (Number.isFinite(start) && start > now() - 864e5 ? start : (m.wage_next_at && m.wage_amount ? m.wage_next_at : now()));
+    q.setWage.run(amt, usd ? 'USD' : 'RODUX', why, admin, now(), next, paused, id);
+    note(id, 'biz', { step: amt === 0 ? 'Monthly wage ended' : `Monthly wage set to ${usd ? '$' + (amt / 100).toFixed(2) : amt + ' Rodux'}${paused ? ' (paused)' : ''}`, note: why });
+    log('biz wage', id, amt, usd ? 'USD' : 'RODUX', 'by', admin);
+    return adminView(admin);
+  }
+  // Runs every hour. Pays each due wage once and moves the date on by a month.
+  function payWages() {
+    const paid = [];
+    for (const m of q.wageDue.all(now())) {
+      if (!signed(m.roblox_id, 'business')) continue;
+      const usd = m.wage_currency === 'USD', amt = m.wage_amount, ref = 'TBBW-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+      const month = new Date(m.wage_next_at).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      tx(() => {
+        q.money.run(usd ? amt : 0, usd ? 0 : amt, m.roblox_id);
+        q.led.run(m.roblox_id, 'wage', usd ? 'USD' : 'RODUX', amt, usd ? Math.floor(amt * perUsd() / 100) : amt, `Monthly wage, ${month}`, m.wage_set_by, ref, null, now());
+        let next = addMonth(m.wage_next_at); while (next <= now()) next = addMonth(next);
+        q.wagePaid.run(next, now(), m.roblox_id);
+      });
+      note(m.roblox_id, 'biz', { step: `Monthly wage paid: ${usd ? '$' + (amt / 100).toFixed(2) : amt + ' Rodux'}`, ref });
+      paid.push({ robloxId: m.roblox_id, amount: amt, currency: m.wage_currency, ref });
+    }
+    if (paid.length) log('biz wages paid', paid.length);
+    return paid;
   }
 
   /* ---------- where an application stands ---------- */
@@ -153,6 +200,7 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
       links: (Array.isArray(b.links) ? b.links : []).slice(0, 4).map(l => ({ platform: PLATFORMS.includes(l && l.platform) ? l.platform : 'other', url: clean(l && l.url, 200) })).filter(l => l.url && URLRE.test(l.url)),
       currency: b.currency === 'usd' ? 'usd' : 'rodux' };
     if (card.name.length < 2) throw new BizError('Put a name on your card.');
+    if (!m.card && !signed(id, 'business')) throw new BizError('Sign the Business and Partner Program Agreement first.', 403);
     q.card.run(JSON.stringify(card), now(), id);
     if (!m.card) note(id, 'biz', { step: 'Created their Business Card' });
     return view(id);
@@ -358,13 +406,13 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
   }
 
   /* ---------- moderators ---------- */
-  const must = a => { if (!isAdmin(a)) throw new BizError('Only moderators can do that.', 403); };
+  const must = (a, perm) => { if (!isAdmin(a) || (perm && !can(a, perm))) throw new BizError('Your staff rank cannot do that.', 403); };
   function adminView(admin) {
     must(admin);
     const rows = q.all.all();
     return { roduxPerUsd: perUsd(), members: rows.map(m => ({ robloxId: m.roblox_id, username: m.username, status: m.status, appliedAt: m.applied_at, decidedAt: m.decided_at, note: m.note, form: parse(m.form, {}),
       tepp: m.tepp, teppAt: m.tepp_at, teppForm: parse(m.tepp_form, null), teppNote: m.tepp_note, card: parse(m.card, null), cardNo: cardNo(m.roblox_id),
-      balance: { usd: m.usd_cents / 100, rodux: m.rodux }, youtube: { url: m.yt_url, verified: !!m.yt_verified }, codes: q.codes.all(m.roblox_id).length })), requests: requests(admin) };
+      balance: { usd: m.usd_cents / 100, rodux: m.rodux }, youtube: { url: m.yt_url, verified: !!m.yt_verified }, codes: q.codes.all(m.roblox_id).length, wage: wageView(m), agreement: signed(m.roblox_id, 'business') })), requests: requests(admin) };
   }
   function decide(admin, b) {
     must(admin);
@@ -412,7 +460,7 @@ function create({ db, tx, log = () => {}, isAdmin, secret, rate, items, siteList
   }
   function setYoutube(admin, b) { must(admin); q.ytOk.run(b.verified ? 1 : 0, Number(b.robloxId)); return adminView(admin); }
 
-  return { setSource, setSecurity, passkeyOptions, passkeyRegister, topUp, pay, badge, view, apply, applyTepp, saveCard, ytStart, ytVerify, withdrawRodux, withdrawItems, shop, requests, addRequest, vote,
+  return { setWage, payWages, setSource, setSecurity, passkeyOptions, passkeyRegister, topUp, pay, badge, view, apply, applyTepp, saveCard, ytStart, ytVerify, withdrawRodux, withdrawItems, shop, requests, addRequest, vote,
     adminView, decide, payout, giveCodes, setRequest, setYoutube, payouts: id => q.payouts.all(id), cardNo, BizError };
 }
 
